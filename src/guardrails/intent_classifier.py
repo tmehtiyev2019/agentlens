@@ -2,7 +2,7 @@ import os
 from typing import Literal
 
 import structlog
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
@@ -52,8 +52,8 @@ def classify_intent(idea: str) -> tuple[bool, str]:
     is_safe=False → pipeline stops; reason explains why
     """
     try:
-        llm = ChatAnthropic(
-            model=os.getenv("CLASSIFIER_MODEL", "claude-haiku-4-5-20251001"),
+        llm = ChatOpenAI(
+            model=os.getenv("CLASSIFIER_MODEL", "gpt-4o-mini"),
             temperature=0,
         )
         structured = llm.with_structured_output(IntentClassification)

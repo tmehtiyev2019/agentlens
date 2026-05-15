@@ -16,7 +16,7 @@ import os
 from typing import Literal
 
 import structlog
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
@@ -146,9 +146,9 @@ def run(state: dict) -> dict:
     log.info("starting risk assessment")
 
     try:
-        model_name = os.getenv("AGENT_MODEL", "claude-sonnet-4-6")
+        model_name = os.getenv("AGENT_MODEL", "gpt-4o-mini")
 
-        structured_llm = ChatAnthropic(
+        structured_llm = ChatOpenAI(
             model=model_name,
             temperature=0,
         ).with_structured_output(RiskAssessment)

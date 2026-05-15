@@ -28,7 +28,7 @@ import re
 from typing import Literal
 
 import structlog
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_experimental.tools import PythonREPLTool
 from pydantic import BaseModel, Field
@@ -371,7 +371,7 @@ def run(state: dict) -> dict:
     log.info("starting kill shot synthesis")
 
     try:
-        model_name = os.getenv("AGENT_MODEL", "claude-sonnet-4-6")
+        model_name = os.getenv("AGENT_MODEL", "gpt-4o-mini")
 
         # Step 1: Assemble full context from all available state fields
         context = _build_context(state)
@@ -410,7 +410,7 @@ def run(state: dict) -> dict:
         )
 
         # Step 2: Structured synthesis — no tools bound; forces schema output
-        structured_llm = ChatAnthropic(
+        structured_llm = ChatOpenAI(
             model=model_name,
             temperature=0,
         ).with_structured_output(KillShotExperiment)

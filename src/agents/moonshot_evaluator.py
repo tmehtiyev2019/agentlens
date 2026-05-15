@@ -15,7 +15,7 @@ from typing import Literal
 
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun, WikipediaQueryRun
 from langchain_community.tools.arxiv.tool import ArxivQueryRun
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
@@ -159,8 +159,8 @@ def _gather_evidence(idea: str, log) -> str:
     tools = [DuckDuckGoSearchRun(), ArxivQueryRun(), WikipediaQueryRun()]
     tool_map = {t.name: t for t in tools}
 
-    llm = ChatAnthropic(
-        model=os.getenv("AGENT_MODEL", "claude-sonnet-4-6"),
+    llm = ChatOpenAI(
+        model=os.getenv("AGENT_MODEL", "gpt-4o-mini"),
         temperature=0,
     )
     llm_with_tools = llm.bind_tools(tools)
@@ -198,8 +198,8 @@ def _gather_evidence(idea: str, log) -> str:
 
 def _synthesize(idea: str, evidence_summary: str, log) -> MoonshotEvaluation:
     """Convert raw evidence into a typed MoonshotEvaluation via structured output."""
-    llm = ChatAnthropic(
-        model=os.getenv("AGENT_MODEL", "claude-sonnet-4-6"),
+    llm = ChatOpenAI(
+        model=os.getenv("AGENT_MODEL", "gpt-4o-mini"),
         temperature=0,
     )
     llm_structured = llm.with_structured_output(MoonshotEvaluation)

@@ -12,7 +12,7 @@ State fields written: rag_output, grounded, errors (on failure)
 import os
 
 import structlog
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
@@ -91,7 +91,7 @@ def _generate_retrieval_query(idea: str, model_name: str) -> str:
     Use a lightweight LLM call to compress the idea into a focused retrieval query.
     Temperature=0 for determinism; no tool use needed.
     """
-    llm = ChatAnthropic(model=model_name, temperature=0, max_tokens=128)
+    llm = ChatOpenAI(model=model_name, temperature=0, max_tokens=128)
     response = llm.invoke(
         [
             SystemMessage(content=_QUERY_SYSTEM_PROMPT),
@@ -122,7 +122,7 @@ def _generate_assumptions(
         "List the key assumptions (JSON array of strings):"
     )
 
-    llm = ChatAnthropic(model=model_name, temperature=0, max_tokens=512)
+    llm = ChatOpenAI(model=model_name, temperature=0, max_tokens=512)
     response = llm.invoke(
         [
             SystemMessage(content=_ASSUMPTION_SYSTEM_PROMPT),
@@ -165,7 +165,7 @@ def run(state: dict) -> dict:
     On VectorStore failure, returns rag_output=None and appends to errors.
     """
     idea: str = state["idea"]
-    model_name = os.getenv("AGENT_MODEL", "claude-sonnet-4-6")
+    model_name = os.getenv("AGENT_MODEL", "gpt-4o-mini")
 
     log = logger.bind(agent="rag_agent", idea_preview=idea[:80])
     log.info("starting rag retrieval")

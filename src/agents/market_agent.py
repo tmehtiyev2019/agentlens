@@ -11,7 +11,7 @@ import os
 from typing import Literal
 
 import structlog
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun, WikipediaQueryRun
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel, Field
@@ -117,9 +117,9 @@ def run(state: dict) -> dict:
     log.info("starting market assessment")
 
     try:
-        model_name = os.getenv("AGENT_MODEL", "claude-sonnet-4-6")
+        model_name = os.getenv("AGENT_MODEL", "gpt-4o-mini")
 
-        llm_with_tools = ChatAnthropic(
+        llm_with_tools = ChatOpenAI(
             model=model_name,
             temperature=0,
         ).bind_tools(_tools)
@@ -153,7 +153,7 @@ def run(state: dict) -> dict:
                 )
 
         # Structured synthesis — bind no tools so the model must emit the schema.
-        structured_llm = ChatAnthropic(
+        structured_llm = ChatOpenAI(
             model=model_name,
             temperature=0,
         ).with_structured_output(MarketAssessment)

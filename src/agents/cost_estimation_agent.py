@@ -15,7 +15,7 @@ from typing import Literal
 
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langchain_community.tools.arxiv.tool import ArxivQueryRun
 from langchain_experimental.tools import PythonREPLTool
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
@@ -183,8 +183,8 @@ def _gather_cost_benchmarks(idea: str, log) -> str:
     tools = [arxiv]
     tool_map = {t.name: t for t in tools}
 
-    llm = ChatAnthropic(
-        model=os.getenv("AGENT_MODEL", "claude-sonnet-4-6"),
+    llm = ChatOpenAI(
+        model=os.getenv("AGENT_MODEL", "gpt-4o-mini"),
         temperature=0,
     )
     llm_with_tools = llm.bind_tools(tools)
@@ -230,8 +230,8 @@ def _run_numeric_calculations(evidence_summary: str, log) -> str:
     python_repl = PythonREPLTool()
 
     # Ask the LLM to write calculation code grounded in the evidence summary
-    code_request_llm = ChatAnthropic(
-        model=os.getenv("AGENT_MODEL", "claude-sonnet-4-6"),
+    code_request_llm = ChatOpenAI(
+        model=os.getenv("AGENT_MODEL", "gpt-4o-mini"),
         temperature=0,
     )
     code_response = code_request_llm.invoke(
@@ -281,8 +281,8 @@ def _synthesize(
     Step 3: Combine evidence and computed results into a typed CostEstimation
     using with_structured_output so schema conformance is enforced by the SDK.
     """
-    llm = ChatAnthropic(
-        model=os.getenv("AGENT_MODEL", "claude-sonnet-4-6"),
+    llm = ChatOpenAI(
+        model=os.getenv("AGENT_MODEL", "gpt-4o-mini"),
         temperature=0,
     )
     llm_structured = llm.with_structured_output(CostEstimation)

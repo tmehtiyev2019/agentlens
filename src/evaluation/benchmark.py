@@ -42,21 +42,21 @@ logger = structlog.get_logger()
 
 CONFIGS: list[dict[str, Any]] = [
     {
-        "name": "sonnet-rag-on",
-        "agent_model": "claude-sonnet-4-6",
-        "judge_model": "claude-opus-4-7",
+        "name": "mini-rag-on",
+        "agent_model": "gpt-4o-mini",
+        "judge_model": "gpt-4o-mini",
         "rag_enabled": True,
     },
     {
-        "name": "sonnet-rag-off",
-        "agent_model": "claude-sonnet-4-6",
-        "judge_model": "claude-opus-4-7",
+        "name": "mini-rag-off",
+        "agent_model": "gpt-4o-mini",
+        "judge_model": "gpt-4o-mini",
         "rag_enabled": False,
     },
     {
-        "name": "opus-rag-on",
-        "agent_model": "claude-opus-4-7",
-        "judge_model": "claude-opus-4-7",
+        "name": "gpt4o-rag-on",
+        "agent_model": "gpt-4o",
+        "judge_model": "gpt-4o",
         "rag_enabled": True,
     },
 ]
@@ -115,7 +115,7 @@ def _restore_rag(vector_store_module: Any, original: Any) -> None:
 # Graph module loader
 #
 # The orchestrator reads os.getenv("AGENT_MODEL") at import time when it
-# constructs the ChatAnthropic clients. Because Python caches imported modules,
+# constructs the ChatOpenAI clients. Because Python caches imported modules,
 # we force a full reload of the agent subpackage for each configuration so that
 # the model env var is picked up fresh each time.
 # ---------------------------------------------------------------------------

@@ -3,8 +3,8 @@ LLM-as-Judge scorer for the AgentLens pipeline.
 
 Invoked after all parallel specialist agents and the kill_shot agent have
 completed. Scores the full pipeline output across seven criteria using a
-DIFFERENT, MORE CAPABLE model than the agents (judge = claude-opus-4-7,
-agents = claude-sonnet-4-6) to avoid self-evaluation bias.
+DIFFERENT, MORE CAPABLE model than the agents (judge = gpt-4o-mini,
+agents = gpt-4o-mini) to avoid self-evaluation bias.
 
 Exported function:
     score_output(state: dict) -> JudgeScores
@@ -15,7 +15,7 @@ import random
 from typing import Any
 
 import structlog
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
@@ -216,8 +216,8 @@ def score_output(state: dict) -> JudgeScores:
     """
     Run the LLM-as-judge over the full pipeline state.
 
-    Uses JUDGE_MODEL (default claude-opus-4-7) — always a different, more
-    capable model than the specialist agents (AGENT_MODEL = claude-sonnet-4-6).
+    Uses JUDGE_MODEL (default gpt-4o-mini) — always a different, more
+    capable model than the specialist agents (AGENT_MODEL = gpt-4o-mini).
 
     The judge uses temperature=0 for determinism. Structured output is enforced
     via with_structured_output so no regex parsing of free-form text is required.
@@ -232,8 +232,8 @@ def score_output(state: dict) -> JudgeScores:
     )
     log.info("judge scoring started")
 
-    judge_model = os.getenv("JUDGE_MODEL", "claude-opus-4-7")
-    agent_model = os.getenv("AGENT_MODEL", "claude-sonnet-4-6")
+    judge_model = os.getenv("JUDGE_MODEL", "gpt-4o-mini")
+    agent_model = os.getenv("AGENT_MODEL", "gpt-4o-mini")
     if judge_model == agent_model:
         log.warning(
             "judge_model equals agent_model — self-evaluation bias risk",
@@ -242,7 +242,7 @@ def score_output(state: dict) -> JudgeScores:
 
     prompt = _build_judge_prompt(state)
 
-    judge_llm = ChatAnthropic(
+    judge_llm = ChatOpenAI(
         model=judge_model,
         temperature=0,
     ).with_structured_output(JudgeScores)
