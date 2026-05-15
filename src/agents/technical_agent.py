@@ -17,6 +17,8 @@ from langchain_community.utilities import WikipediaAPIWrapper
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel, Field
 
+from src.agents._critique import revise_addendum
+
 logger = structlog.get_logger()
 
 # ---------------------------------------------------------------------------
@@ -93,7 +95,7 @@ Cite specific Arxiv paper IDs or Wikipedia article titles as evidence.
 # ---------------------------------------------------------------------------
 
 def run(state: dict) -> dict:
-    idea: str = state["idea"]
+    idea: str = state["idea"] + revise_addendum(state)
 
     log = logger.bind(agent="technical_agent", idea_preview=idea[:80])
     log.info("starting technical assessment")

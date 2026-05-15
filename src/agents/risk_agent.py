@@ -20,6 +20,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
+from src.agents._critique import revise_addendum
+
 logger = structlog.get_logger()
 
 # ---------------------------------------------------------------------------
@@ -130,7 +132,7 @@ Weight these failure modes accordingly.
 # ---------------------------------------------------------------------------
 
 def run(state: dict) -> dict:
-    idea: str = state["idea"]
+    idea: str = state["idea"] + revise_addendum(state)
 
     # Incorporate upstream context if available — parallel execution means these
     # may be None when risk_agent runs, which is fine; we handle both cases.

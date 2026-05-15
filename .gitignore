@@ -1,5 +1,7 @@
 # Secrets and local context
 .env
+.env.*
+!.env.example
 CLAUDE.md
 
 # Python
@@ -21,14 +23,28 @@ ENV/
 
 # ChromaDB local data
 chroma_db/
+
+# SQLite (checkpointer + any other local dbs)
 *.sqlite3
 *.db
+*.db-shm
+*.db-wal
 
 # Benchmark results (generated artifacts)
 benchmarks/results/
 
 # Knowledge base portfolio docs (user-supplied, not source-controlled)
 src/knowledge_base/portfolio/
+
+# Next.js frontend build artifacts and dependencies
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.vercel/
+frontend/next-env.d.ts
+
+# Streamlit secrets / local config
+.streamlit/secrets.toml
 
 # Jupyter
 .ipynb_checkpoints/
@@ -52,3 +68,12 @@ logs/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# LangSmith / tracing local exports
+langsmith_traces/
+traces/
+
+# Misc credentials / certs
+*.pem
+*.key
+*.p12

@@ -16,6 +16,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
+from src.agents._critique import revise_addendum
 from src.knowledge_base.vector_store import RetrievedChunk, VectorStore
 
 logger = structlog.get_logger()
@@ -164,7 +165,7 @@ def run(state: dict) -> dict:
     Returns a partial GraphState update with rag_output and grounded.
     On VectorStore failure, returns rag_output=None and appends to errors.
     """
-    idea: str = state["idea"]
+    idea: str = state["idea"] + revise_addendum(state)
     model_name = os.getenv("AGENT_MODEL", "gpt-4o-mini")
 
     log = logger.bind(agent="rag_agent", idea_preview=idea[:80])

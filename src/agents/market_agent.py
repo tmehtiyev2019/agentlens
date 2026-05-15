@@ -18,6 +18,8 @@ from langchain_community.utilities import WikipediaAPIWrapper
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel, Field
 
+from src.agents._critique import revise_addendum
+
 logger = structlog.get_logger()
 
 # ---------------------------------------------------------------------------
@@ -109,7 +111,7 @@ Cite your sources.
 # ---------------------------------------------------------------------------
 
 def run(state: dict) -> dict:
-    idea: str = state["idea"]
+    idea: str = state["idea"] + revise_addendum(state)
 
     log = logger.bind(agent="market_agent", idea_preview=idea[:80])
     log.info("starting market assessment")

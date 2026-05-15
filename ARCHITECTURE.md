@@ -1,5 +1,7 @@
 # AgentLens — Architecture & Technology
 
+> **Interactive Architecture Guide:** [htmlpreview.github.io/?https://github.com/tmehtiyev2019/agentlens/blob/main/docs/architecture.html](https://htmlpreview.github.io/?https://github.com/tmehtiyev2019/agentlens/blob/main/docs/architecture.html)
+
 ## Purpose
 
 A production-style agentic AI system that performs techno-economic analysis of moonshot product ideas. A moonshot evaluator gate screens the input first. If the idea passes, a panel of specialist agents analyzes it in parallel. A kill shot experiment designer agent then identifies the single most critical assumption and designs the cheapest experiment to validate or kill the idea. A dedicated evaluation layer scores and benchmarks the full output.

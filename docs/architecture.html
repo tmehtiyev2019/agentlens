@@ -1,0 +1,1383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentLens — Architecture Deep Dive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0f1e;
+  --bg2: #111827;
+  --bg3: #1a2236;
+  --border: #1e2d4a;
+  --primary: #2563eb;
+  --primary-light: #3b82f6;
+  --primary-dim: rgba(37,99,235,0.12);
+  --primary-glow: rgba(37,99,235,0.35);
+  --text: #f1f5f9;
+  --text-2: #94a3b8;
+  --text-3: #475569;
+  --green: #10b981;
+  --green-dim: rgba(16,185,129,0.12);
+  --red: #ef4444;
+  --red-dim: rgba(239,68,68,0.12);
+  --amber: #f59e0b;
+  --amber-dim: rgba(245,158,11,0.12);
+  --purple: #8b5cf6;
+  --purple-dim: rgba(139,92,246,0.12);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); line-height: 1.65; overflow-x: hidden; }
+code, pre { font-family: 'JetBrains Mono', monospace; }
+
+/* ── NAV ─────────────────────────────────────────────────────────── */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+  background: rgba(10,15,30,0.88); backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+  height: 54px; padding: 0 2rem;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-logo { font-size: 0.95rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.nav-logo .dot { width: 8px; height: 8px; background: var(--primary-light); border-radius: 50%; animation: pulse-dot 2s infinite; }
+@keyframes pulse-dot {
+  0%,100% { opacity: 1; box-shadow: 0 0 0 0 var(--primary-glow); }
+  50% { opacity: 0.8; box-shadow: 0 0 0 6px transparent; }
+}
+.nav-links { display: flex; gap: 1.4rem; list-style: none; }
+.nav-links a { color: var(--text-3); text-decoration: none; font-size: 0.78rem; font-weight: 500; transition: color 0.2s; }
+.nav-links a:hover { color: var(--text); }
+.nav-gh a {
+  background: var(--primary-dim); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--primary-light) !important; padding: 5px 12px; font-size: 0.75rem !important;
+  transition: background 0.2s !important;
+}
+.nav-gh a:hover { background: var(--primary) !important; color: #fff !important; }
+
+/* ── HERO ─────────────────────────────────────────────────────────── */
+.hero {
+  min-height: 100vh; padding: 7rem 2rem 5rem;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; position: relative; overflow: hidden;
+}
+#hero-canvas { position: absolute; inset: 0; pointer-events: none; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--primary-dim); border: 1px solid rgba(37,99,235,0.3);
+  border-radius: 100px; padding: 5px 14px; font-size: 0.75rem; font-weight: 600;
+  color: var(--primary-light); margin-bottom: 1.5rem;
+  animation: badge-in 0.6s ease both;
+}
+.hero h1 {
+  font-size: clamp(2.2rem, 5vw, 3.8rem); font-weight: 800; line-height: 1.12;
+  letter-spacing: -0.03em; margin-bottom: 1.2rem;
+  animation: fade-up 0.7s 0.1s ease both;
+}
+.hero h1 .grad {
+  background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 50%, #34d399 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.hero-sub {
+  max-width: 600px; font-size: 1.05rem; color: var(--text-2); margin-bottom: 2.5rem;
+  animation: fade-up 0.7s 0.2s ease both;
+}
+.hero-stats {
+  display: flex; gap: 1.5rem; flex-wrap: wrap; justify-content: center;
+  margin-bottom: 2.5rem; animation: fade-up 0.7s 0.3s ease both;
+}
+.hero-stat {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 1rem 1.5rem; min-width: 120px;
+}
+.hero-stat .n { font-size: 1.8rem; font-weight: 800; color: var(--primary-light); }
+.hero-stat .l { font-size: 0.72rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
+.hero-cta {
+  display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;
+  animation: fade-up 0.7s 0.4s ease both;
+}
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  border-radius: 10px; font-size: 0.9rem; font-weight: 600;
+  padding: 0.7rem 1.6rem; cursor: pointer; border: none;
+  text-decoration: none; transition: all 0.2s;
+}
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: #1d4ed8; box-shadow: 0 4px 20px var(--primary-glow); transform: translateY(-1px); }
+.btn-outline { background: transparent; color: var(--text-2); border: 1px solid var(--border); }
+.btn-outline:hover { border-color: var(--primary-light); color: var(--text); background: var(--primary-dim); }
+
+/* ── SECTIONS ─────────────────────────────────────────────────────── */
+section { padding: 5rem 2rem; }
+.container { max-width: 1100px; margin: 0 auto; }
+.section-label {
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--primary-light); margin-bottom: 0.5rem;
+}
+.section-title { font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 800; letter-spacing: -0.02em; margin-bottom: 0.6rem; }
+.section-sub { color: var(--text-2); font-size: 0.97rem; max-width: 620px; }
+
+/* ── OVERVIEW ─────────────────────────────────────────────────────── */
+#overview { background: var(--bg); }
+.overview-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.2rem; margin-top: 2.5rem;
+}
+.overview-card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 14px;
+  padding: 1.5rem; transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+  opacity: 0; transform: translateY(20px);
+}
+.overview-card.visible { animation: fade-up-in 0.5s ease forwards; }
+.overview-card:hover { border-color: var(--primary-light); transform: translateY(-3px); box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
+.oc-icon { font-size: 1.8rem; margin-bottom: 0.8rem; }
+.oc-title { font-size: 1rem; font-weight: 700; margin-bottom: 0.4rem; }
+.oc-text { font-size: 0.85rem; color: var(--text-2); }
+
+/* ── PIPELINE ─────────────────────────────────────────────────────── */
+#pipeline { background: var(--bg2); }
+.pipeline-controls { display: flex; gap: 1rem; margin-top: 2rem; margin-bottom: 2.5rem; flex-wrap: wrap; }
+.pipeline-flow {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+}
+.pf-connector {
+  width: 2px; height: 32px; background: var(--border); position: relative;
+  transition: background 0.4s;
+}
+.pf-connector.active { background: var(--primary); }
+.pf-connector::after {
+  content: ''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: var(--border);
+  transition: border-top-color 0.4s;
+}
+.pf-connector.active::after { border-top-color: var(--primary); }
+
+.pf-node {
+  width: 100%; max-width: 700px;
+  background: var(--bg); border: 1.5px solid var(--border); border-radius: 14px;
+  padding: 1.2rem 1.5rem; cursor: pointer;
+  transition: all 0.25s; position: relative; overflow: hidden;
+}
+.pf-node::before {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg, var(--primary-dim), transparent);
+  opacity: 0; transition: opacity 0.3s;
+}
+.pf-node:hover::before, .pf-node.active::before { opacity: 1; }
+.pf-node.active { border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-dim), 0 8px 30px rgba(0,0,0,0.3); }
+.pf-node.running { border-color: var(--amber); box-shadow: 0 0 0 4px var(--amber-dim); }
+.pf-node.running::before { background: linear-gradient(135deg, var(--amber-dim), transparent); opacity: 1; }
+.pf-node.done { border-color: var(--green); }
+.pf-node.done::before { background: linear-gradient(135deg, var(--green-dim), transparent); opacity: 1; }
+.pf-node.rejected { border-color: var(--red); }
+.pf-node.rejected::before { background: linear-gradient(135deg, var(--red-dim), transparent); opacity: 1; }
+
+.pf-header { display: flex; align-items: center; gap: 0.75rem; }
+.pf-icon { font-size: 1.3rem; }
+.pf-name { font-size: 0.95rem; font-weight: 700; }
+.pf-desc { font-size: 0.78rem; color: var(--text-2); margin-top: 1px; }
+.pf-status {
+  margin-left: auto; font-size: 0.72rem; font-weight: 600; padding: 3px 10px;
+  border-radius: 100px; border: 1px solid var(--border); color: var(--text-3);
+  transition: all 0.3s;
+}
+.pf-node.running .pf-status { background: var(--amber-dim); border-color: var(--amber); color: var(--amber); }
+.pf-node.done .pf-status { background: var(--green-dim); border-color: var(--green); color: var(--green); }
+.pf-node.rejected .pf-status { background: var(--red-dim); border-color: var(--red); color: var(--red); }
+
+.pf-details {
+  max-height: 0; overflow: hidden; transition: max-height 0.4s ease, padding 0.3s;
+}
+.pf-node.active .pf-details { max-height: 600px; padding-top: 1rem; }
+.pf-details-inner { border-top: 1px solid var(--border); padding-top: 1rem; }
+.pf-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.75rem; }
+@media(max-width:560px) { .pf-detail-grid { grid-template-columns: 1fr; } }
+.pf-detail-box { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 0.85rem; }
+.pf-detail-box h4 { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); margin-bottom: 0.4rem; }
+.pf-detail-box p, .pf-detail-box li { font-size: 0.82rem; color: var(--text-2); }
+.pf-detail-box ul { list-style: none; }
+.pf-detail-box li::before { content: '→ '; color: var(--primary-light); }
+.pf-decision-box {
+  background: var(--primary-dim); border: 1px solid rgba(37,99,235,0.25); border-radius: 10px;
+  padding: 0.85rem; margin-top: 0.75rem;
+}
+.pf-decision-box h4 { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--primary-light); margin-bottom: 0.4rem; }
+.pf-decision-box p { font-size: 0.82rem; color: var(--text-2); }
+
+/* Parallel section */
+.pf-parallel {
+  width: 100%; max-width: 700px; display: grid;
+  grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 0;
+}
+.pf-parallel-node {
+  background: var(--bg); border: 1.5px solid var(--border); border-radius: 12px;
+  padding: 0.85rem 0.5rem; text-align: center; cursor: pointer;
+  transition: all 0.25s;
+}
+.pf-parallel-node:hover { border-color: var(--primary-light); transform: translateY(-2px); }
+.pf-parallel-node.running { border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-dim); }
+.pf-parallel-node.done { border-color: var(--green); }
+.ppn-icon { font-size: 1.2rem; display: block; margin-bottom: 4px; }
+.ppn-name { font-size: 0.68rem; color: var(--text-2); font-weight: 600; }
+.ppn-status { font-size: 0.62rem; margin-top: 3px; color: var(--text-3); }
+.pf-parallel-node.running .ppn-status { color: var(--amber); }
+.pf-parallel-node.done .ppn-status { color: var(--green); }
+.parallel-label {
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-3); margin-bottom: 8px; align-self: flex-start; max-width: 700px;
+  display: flex; align-items: center; gap: 6px;
+}
+.parallel-label::before, .parallel-label::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+.parallel-wrapper { width: 100%; max-width: 700px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.connector-split {
+  width: 100%; max-width: 700px; display: flex; justify-content: center;
+  gap: 0; height: 32px; position: relative;
+}
+.connector-split::before {
+  content: ''; position: absolute; top: 0; left: 50%; width: 2px; height: 100%;
+  background: var(--border); transform: translateX(-50%);
+}
+
+/* ── MEMORY ─────────────────────────────────────────────────────────── */
+#memory { background: var(--bg); }
+.memory-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-top: 2.5rem; }
+.mem-card {
+  border: 1.5px solid var(--border); border-radius: 16px; padding: 1.8rem;
+  position: relative; overflow: hidden; transition: all 0.3s;
+  opacity: 0; transform: translateY(20px);
+}
+.mem-card.visible { animation: fade-up-in 0.5s ease forwards; }
+.mem-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
+.mem-episodic { background: linear-gradient(135deg, rgba(37,99,235,0.08), var(--bg2)); border-color: rgba(37,99,235,0.3); }
+.mem-semantic { background: linear-gradient(135deg, rgba(139,92,246,0.08), var(--bg2)); border-color: rgba(139,92,246,0.3); }
+.mem-procedural { background: linear-gradient(135deg, rgba(16,185,129,0.08), var(--bg2)); border-color: rgba(16,185,129,0.3); }
+.mem-card:hover.mem-episodic { box-shadow: 0 12px 40px rgba(37,99,235,0.2); border-color: var(--primary); }
+.mem-card:hover.mem-semantic { box-shadow: 0 12px 40px rgba(139,92,246,0.2); border-color: var(--purple); }
+.mem-card:hover.mem-procedural { box-shadow: 0 12px 40px rgba(16,185,129,0.2); border-color: var(--green); }
+.mem-type { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem; }
+.mem-episodic .mem-type { color: var(--primary-light); }
+.mem-semantic .mem-type { color: var(--purple); }
+.mem-procedural .mem-type { color: var(--green); }
+.mem-title { font-size: 1.2rem; font-weight: 800; margin-bottom: 0.5rem; }
+.mem-def { font-size: 0.83rem; color: var(--text-2); margin-bottom: 1rem; }
+.mem-impl { font-size: 0.8rem; color: var(--text-2); }
+.mem-impl strong { color: var(--text); }
+.mem-tag {
+  display: inline-block; font-size: 0.68rem; font-weight: 600; padding: 3px 10px;
+  border-radius: 100px; margin-top: 1rem;
+}
+.mem-episodic .mem-tag { background: var(--primary-dim); color: var(--primary-light); }
+.mem-semantic .mem-tag { background: var(--purple-dim); color: var(--purple); }
+.mem-procedural .mem-tag { background: var(--green-dim); color: var(--green); }
+.mem-fail { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.7rem; margin-top: 0.75rem; }
+.mem-fail-label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--red); margin-bottom: 2px; }
+.mem-fail p { font-size: 0.78rem; color: var(--text-2); }
+
+/* ── GUARDRAILS ───────────────────────────────────────────────────── */
+#guardrails { background: var(--bg2); }
+.gr-wrapper { margin-top: 2.5rem; display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: start; }
+@media(max-width:700px) { .gr-wrapper { grid-template-columns: 1fr; } }
+.gr-stack { display: flex; flex-direction: column; gap: 0; }
+.gr-layer {
+  border: 1.5px solid var(--border); border-radius: 14px;
+  padding: 1.2rem 1.5rem; margin-bottom: -1px; position: relative;
+  transition: all 0.25s; cursor: default;
+  background: var(--bg);
+}
+.gr-layer:first-child { border-radius: 14px 14px 0 0; }
+.gr-layer:last-child { border-radius: 0 0 14px 14px; }
+.gr-layer:hover { z-index: 2; transform: scale(1.01); background: var(--bg3); border-color: var(--primary-light); box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+.gr-num { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; flex-shrink: 0; }
+.gr-header { display: flex; align-items: center; gap: 0.75rem; }
+.gr-name { font-size: 0.9rem; font-weight: 700; }
+.gr-mech { font-size: 0.78rem; color: var(--text-2); margin-top: 0.4rem; padding-left: 2.5rem; }
+.gr-l1 .gr-num { background: rgba(239,68,68,0.15); color: var(--red); }
+.gr-l2 .gr-num { background: rgba(245,158,11,0.15); color: var(--amber); }
+.gr-l3 .gr-num { background: rgba(37,99,235,0.15); color: var(--primary-light); }
+.gr-l4 .gr-num { background: rgba(16,185,129,0.15); color: var(--green); }
+.gr-right { display: flex; flex-direction: column; gap: 0.75rem; }
+.gr-what { background: var(--bg); border: 1px solid var(--border); border-radius: 14px; padding: 1.2rem 1.5rem; }
+.gr-what h3 { font-size: 0.85rem; font-weight: 700; margin-bottom: 0.75rem; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.7rem; }
+.gr-avoid-item {
+  display: flex; align-items: flex-start; gap: 0.5rem;
+  font-size: 0.8rem; color: var(--text-2); padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.gr-avoid-item:last-child { border-bottom: none; }
+.gr-avoid-item .ico { color: var(--red); flex-shrink: 0; }
+
+/* ── DECISIONS ─────────────────────────────────────────────────────── */
+#decisions { background: var(--bg); }
+.dec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.2rem; margin-top: 2.5rem; }
+.dec-card {
+  background: var(--bg2); border: 1.5px solid var(--border); border-radius: 14px;
+  overflow: hidden; cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s;
+  opacity: 0; transform: translateY(20px);
+}
+.dec-card.visible { animation: fade-up-in 0.5s ease forwards; }
+.dec-card.open { border-color: var(--primary); }
+.dec-header {
+  padding: 1.2rem 1.4rem; display: flex; align-items: flex-start;
+  justify-content: space-between; gap: 0.75rem;
+}
+.dec-q { font-size: 0.88rem; font-weight: 700; }
+.dec-a { font-size: 0.78rem; color: var(--primary-light); margin-top: 3px; font-weight: 600; }
+.dec-toggle { color: var(--text-3); font-size: 1.1rem; flex-shrink: 0; transition: transform 0.3s; margin-top: 2px; }
+.dec-card.open .dec-toggle { transform: rotate(45deg); }
+.dec-body { max-height: 0; overflow: hidden; transition: max-height 0.4s ease; }
+.dec-card.open .dec-body { max-height: 400px; }
+.dec-body-inner { padding: 0 1.4rem 1.4rem; }
+.dec-why { font-size: 0.82rem; color: var(--text-2); margin-bottom: 0.75rem; }
+.dec-alt { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; }
+.dec-alt-label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); margin-bottom: 3px; }
+.dec-alt p { font-size: 0.78rem; color: var(--text-2); }
+
+/* ── FAILURES ─────────────────────────────────────────────────────── */
+#failures { background: var(--bg2); }
+.fail-tabs { display: flex; gap: 4px; margin-top: 2rem; border-bottom: 1px solid var(--border); padding-bottom: 0; }
+.fail-tab {
+  padding: 0.6rem 1.2rem; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  border-radius: 8px 8px 0 0; color: var(--text-3); transition: all 0.2s;
+  border: 1px solid transparent; border-bottom: none; position: relative; bottom: -1px;
+}
+.fail-tab.active { color: var(--text); background: var(--bg2); border-color: var(--border); border-bottom-color: var(--bg2); }
+.fail-panel { display: none; padding-top: 1.5rem; }
+.fail-panel.active { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
+.fail-card {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+  padding: 1.1rem 1.2rem; transition: all 0.2s;
+}
+.fail-card:hover { border-color: var(--red); transform: translateY(-2px); }
+.fail-name { font-size: 0.88rem; font-weight: 700; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 6px; }
+.fail-name::before { content: ''; width: 8px; height: 8px; background: var(--red); border-radius: 50%; flex-shrink: 0; }
+.fail-cause { font-size: 0.78rem; color: var(--text-2); margin-bottom: 0.5rem; }
+.fail-mit { font-size: 0.78rem; color: var(--green); background: var(--green-dim); border-radius: 6px; padding: 0.4rem 0.6rem; }
+.fail-mit-label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+
+/* ── TECH STACK ────────────────────────────────────────────────────── */
+#stack { background: var(--bg); }
+.stack-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; margin-top: 2.5rem; }
+.stack-card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 1.1rem 1.2rem; transition: all 0.2s;
+  opacity: 0; transform: translateY(16px);
+}
+.stack-card.visible { animation: fade-up-in 0.4s ease forwards; }
+.stack-card:hover { border-color: var(--primary-light); transform: translateY(-2px); }
+.stack-name { font-size: 0.92rem; font-weight: 700; margin-bottom: 0.3rem; }
+.stack-role { font-size: 0.72rem; color: var(--primary-light); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 0.4rem; }
+.stack-why { font-size: 0.78rem; color: var(--text-2); }
+
+/* ── IMPLEMENTATION ─────────────────────────────────────────────────── */
+#impl { background: var(--bg2); }
+.impl-steps { margin-top: 2.5rem; display: flex; flex-direction: column; gap: 0; }
+.impl-step {
+  display: flex; gap: 1.5rem; padding: 1.5rem 0; border-bottom: 1px solid var(--border);
+  position: relative;
+}
+.impl-step:last-child { border-bottom: none; }
+.impl-num {
+  width: 36px; height: 36px; background: var(--primary-dim); border: 1.5px solid var(--primary);
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 0.82rem; font-weight: 800; color: var(--primary-light); flex-shrink: 0;
+  margin-top: 2px;
+}
+.impl-content { flex: 1; }
+.impl-title { font-size: 0.95rem; font-weight: 700; margin-bottom: 0.4rem; }
+.impl-desc { font-size: 0.83rem; color: var(--text-2); margin-bottom: 0.6rem; }
+.impl-code {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 0.75rem 1rem; font-size: 0.78rem; color: #a5f3fc;
+  overflow-x: auto;
+}
+.impl-code .comment { color: var(--text-3); }
+
+/* ── EVALUATION ─────────────────────────────────────────────────────── */
+#evaluation { background: var(--bg); }
+.eval-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 2.5rem; }
+@media(max-width:650px) { .eval-grid { grid-template-columns: 1fr; } }
+.eval-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; }
+.eval-card-title { font-size: 1rem; font-weight: 700; margin-bottom: 0.3rem; }
+.eval-card-sub { font-size: 0.78rem; color: var(--text-2); margin-bottom: 1.2rem; }
+.eval-criterion { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 0.6rem; }
+.ec-name { font-size: 0.78rem; font-weight: 600; display: flex; justify-content: space-between; }
+.ec-bar-bg { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.ec-bar { height: 4px; background: var(--primary); border-radius: 2px; width: 0; transition: width 1.5s ease; }
+.ec-bar.green { background: var(--green); }
+.ec-bar.purple { background: var(--purple); }
+.ec-bar.amber { background: var(--amber); }
+.ec-bar.red { background: var(--red); }
+.eval-note { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; font-size: 0.78rem; color: var(--text-2); margin-top: 1rem; }
+
+/* ── METRICS TABLE ─────────────────────────────────────────────────── */
+#metrics { background: var(--bg2); }
+.metrics-table { width: 100%; border-collapse: collapse; margin-top: 2rem; font-size: 0.82rem; }
+.metrics-table th { text-align: left; padding: 0.6rem 1rem; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); border-bottom: 1px solid var(--border); }
+.metrics-table td { padding: 0.7rem 1rem; border-bottom: 1px solid rgba(30,45,74,0.5); color: var(--text-2); }
+.metrics-table tr:hover td { background: rgba(255,255,255,0.02); }
+.m-target { color: var(--green); font-weight: 600; }
+.m-alert { color: var(--red); }
+
+/* ── FOOTER ─────────────────────────────────────────────────────────── */
+footer {
+  background: var(--bg); border-top: 1px solid var(--border);
+  padding: 2.5rem 2rem; text-align: center;
+}
+.footer-links { display: flex; justify-content: center; gap: 1.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.footer-links a { color: var(--text-3); text-decoration: none; font-size: 0.82rem; transition: color 0.2s; }
+.footer-links a:hover { color: var(--text); }
+.footer-sub { font-size: 0.75rem; color: var(--text-3); }
+
+/* ── ANIMATIONS ─────────────────────────────────────────────────────── */
+@keyframes fade-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes badge-in { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+@keyframes fade-up-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes flow-in {
+  from { stroke-dashoffset: 100; opacity: 0; }
+  to { stroke-dashoffset: 0; opacity: 1; }
+}
+@keyframes node-pulse {
+  0%,100% { box-shadow: 0 0 0 0 var(--amber-dim); }
+  50% { box-shadow: 0 0 0 8px transparent; }
+}
+.pf-node.running { animation: node-pulse 1.5s infinite; }
+
+.running-ring {
+  width: 14px; height: 14px; border: 2px solid var(--amber);
+  border-top-color: transparent; border-radius: 50%;
+  animation: spin 0.8s linear infinite; display: inline-block; flex-shrink: 0;
+}
+.done-check { color: var(--green); }
+
+/* Scroll reveal helper */
+.reveal { opacity: 0; transform: translateY(20px); transition: opacity 0.5s ease, transform 0.5s ease; }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+
+/* Tooltips */
+[data-tip] { position: relative; cursor: help; }
+[data-tip]:hover::after {
+  content: attr(data-tip); position: absolute; bottom: 125%; left: 50%; transform: translateX(-50%);
+  background: #0f172a; color: var(--text); font-size: 0.72rem; padding: 5px 10px;
+  border-radius: 6px; border: 1px solid var(--border); white-space: nowrap; z-index: 10; pointer-events: none;
+}
+
+/* Responsive nav */
+@media(max-width:700px) { .nav-links { display: none; } }
+</style>
+</head>
+<body>
+
+<!-- ── NAV ─────────────────────────────────────────────────────────── -->
+<nav>
+  <div class="nav-logo"><div class="dot"></div> AgentLens</div>
+  <ul class="nav-links">
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#pipeline">Pipeline</a></li>
+    <li><a href="#memory">Memory</a></li>
+    <li><a href="#guardrails">Guardrails</a></li>
+    <li><a href="#decisions">Decisions</a></li>
+    <li><a href="#failures">Failures</a></li>
+    <li><a href="#stack">Stack</a></li>
+    <li><a href="#impl">Guide</a></li>
+    <li class="nav-gh"><a href="https://github.com/tmehtiyev2019/agentlens" target="_blank">GitHub ↗</a></li>
+  </ul>
+</nav>
+
+<!-- ── HERO ─────────────────────────────────────────────────────────── -->
+<section class="hero">
+  <canvas id="hero-canvas"></canvas>
+  <div class="hero-badge">🔭 Production-Style Multi-Agent AI System</div>
+  <h1>How <span class="grad">AgentLens</span><br>works, and why</h1>
+  <p class="hero-sub">A complete architecture walkthrough — from design decisions and component internals to failure modes, memory systems, and observability. Built for the X Moonshot Factory evaluation framework.</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="n" data-counter="5">0</div><div class="l">Specialist Agents</div></div>
+    <div class="hero-stat"><div class="n" data-counter="4">0</div><div class="l">Guardrail Layers</div></div>
+    <div class="hero-stat"><div class="n" data-counter="3">0</div><div class="l">Memory Types</div></div>
+    <div class="hero-stat"><div class="n" data-counter="10">0</div><div class="l">Design Decisions</div></div>
+  </div>
+  <div class="hero-cta">
+    <a href="#pipeline" class="btn btn-primary">⚡ Explore Pipeline</a>
+    <a href="https://github.com/tmehtiyev2019/agentlens" class="btn btn-outline" target="_blank">View on GitHub →</a>
+  </div>
+</section>
+
+<!-- ── OVERVIEW ─────────────────────────────────────────────────────── -->
+<section id="overview">
+  <div class="container">
+    <div class="section-label">What is AgentLens?</div>
+    <h2 class="section-title">Moonshot ideas, evaluated end-to-end</h2>
+    <p class="section-sub">Submit any moonshot product concept. A LangGraph pipeline of specialist AI agents analyzes it in parallel and produces a Kill Shot experiment — the cheapest test of the most critical assumption.</p>
+    <div class="overview-grid">
+      <div class="overview-card">
+        <div class="oc-icon">🎯</div>
+        <div class="oc-title">Designed for X's Evaluation Framework</div>
+        <div class="oc-text">Models the Moonshot Factory's 3-criteria gate (real problem, feasible solution, available technology) that every X project must clear before resources are committed.</div>
+      </div>
+      <div class="overview-card" style="animation-delay:0.1s">
+        <div class="oc-icon">⚡</div>
+        <div class="oc-title">Parallel Agent Execution</div>
+        <div class="oc-text">Five specialist agents (technical, market, risk, cost, RAG) run simultaneously via LangGraph's Send API fan-out — not sequentially. Reduces latency from 5× to 1× the slowest agent.</div>
+      </div>
+      <div class="overview-card" style="animation-delay:0.2s">
+        <div class="oc-icon">👤</div>
+        <div class="oc-title">Human-in-the-Loop</div>
+        <div class="oc-text">After all 5 agents complete, execution pauses for expert review. Domain experts can approve, reject, or add correction notes before the Kill Shot designer runs.</div>
+      </div>
+      <div class="overview-card" style="animation-delay:0.3s">
+        <div class="oc-icon">🔬</div>
+        <div class="oc-title">Kill Shot Experiment</div>
+        <div class="oc-text">The final agent synthesizes all outputs and designs the single cheapest experiment to test the most critical assumption — producing an actionable output, not just a report.</div>
+      </div>
+      <div class="overview-card" style="animation-delay:0.4s">
+        <div class="oc-icon">📊</div>
+        <div class="oc-title">Evaluation Layer</div>
+        <div class="oc-text">LLM-as-judge (per-criterion) + RAGAS metrics + benchmark sweeps. Detects quality regressions, measures RAG faithfulness, and compares model configurations programmatically.</div>
+      </div>
+      <div class="overview-card" style="animation-delay:0.5s">
+        <div class="oc-icon">🛡️</div>
+        <div class="oc-title">4-Layer Guardrails</div>
+        <div class="oc-text">Defense in depth: prompt instructions, Pydantic output schemas, pre-generation intent classifier, and post-generation rule checks. Single-layer guardrails are easily bypassed.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── PIPELINE ─────────────────────────────────────────────────────── -->
+<section id="pipeline">
+  <div class="container">
+    <div class="section-label">Execution Flow</div>
+    <h2 class="section-title">The LangGraph Pipeline</h2>
+    <p class="section-sub">Click any node to explore its internals. Hit "Simulate Run" to watch a live analysis flow through the graph.</p>
+    <div class="pipeline-controls">
+      <button class="btn btn-primary" id="sim-btn" onclick="simulatePipeline()">▶ Simulate Run</button>
+      <button class="btn btn-outline" onclick="resetPipeline()">↺ Reset</button>
+    </div>
+    <div class="pipeline-flow" id="pipeline-flow">
+
+      <!-- Input -->
+      <div class="pf-node" id="pn-input" onclick="toggleNode('pn-input')">
+        <div class="pf-header">
+          <div class="pf-icon">💡</div>
+          <div><div class="pf-name">Input: Moonshot Idea</div><div class="pf-desc">Natural language product or technology concept (up to 2,000 chars)</div></div>
+          <div class="pf-status" id="pn-input-status">Idle</div>
+        </div>
+        <div class="pf-details"><div class="pf-details-inner">
+          <div class="pf-detail-grid">
+            <div class="pf-detail-box"><h4>API Entry Point</h4><p><code>POST /evaluate</code> — returns a <code>thread_id</code> immediately. The pipeline runs asynchronously; the frontend consumes <code>GET /evaluate/{id}/stream</code> to receive real-time SSE events.</p></div>
+            <div class="pf-detail-box"><h4>State Initialization</h4><p>Creates a new <code>GraphState</code> TypedDict with the idea text. LangGraph checkpoints this initial state so the run can resume from any node on failure.</p></div>
+          </div>
+        </div></div>
+      </div>
+
+      <div class="pf-connector" id="conn-1"></div>
+
+      <!-- Intent Classifier -->
+      <div class="pf-node" id="pn-intent" onclick="toggleNode('pn-intent')">
+        <div class="pf-header">
+          <div class="pf-icon">🛡️</div>
+          <div><div class="pf-name">Intent Classifier</div><div class="pf-desc">Pre-generation safety + input type classification</div></div>
+          <div class="pf-status" id="pn-intent-status">Idle</div>
+        </div>
+        <div class="pf-details"><div class="pf-details-inner">
+          <div class="pf-detail-grid">
+            <div class="pf-detail-box"><h4>What it does</h4><ul><li>Classifies input as <code>safe</code> / <code>borderline</code> / <code>harmful</code></li><li>Determines <code>input_type</code>: <code>"idea"</code> or <code>"chat"</code></li><li>Returns both in one LLM call using Pydantic <code>InputAnalysis</code> schema</li></ul></div>
+            <div class="pf-detail-box"><h4>Routing</h4><ul><li><strong>harmful</strong> → <code>rejection_report</code> (terminates)</li><li><strong>chat</strong> → <code>chat_responder</code> (friendly reply)</li><li><strong>idea + safe</strong> → <code>moonshot_evaluator</code></li></ul></div>
+          </div>
+          <div class="pf-decision-box"><h4>Why combine safety + type in one call?</h4><p>Two separate LLM calls would double latency on the hot path. A single <code>InputAnalysis</code> Pydantic schema forces the model to reason about both in one forward pass. The combined call adds ~200ms — far less than two sequential calls.</p></div>
+        </div></div>
+      </div>
+
+      <div class="pf-connector" id="conn-2"></div>
+
+      <!-- Moonshot Gate -->
+      <div class="pf-node" id="pn-gate" onclick="toggleNode('pn-gate')">
+        <div class="pf-header">
+          <div class="pf-icon">🌙</div>
+          <div><div class="pf-name">Moonshot Evaluator Gate</div><div class="pf-desc">3 pass/fail criteria — fails fast before expensive parallel agents run</div></div>
+          <div class="pf-status" id="pn-gate-status">Idle</div>
+        </div>
+        <div class="pf-details"><div class="pf-details-inner">
+          <div class="pf-detail-grid">
+            <div class="pf-detail-box"><h4>Three Criteria</h4><ul><li>Is the problem <strong>real</strong> and urgent?</li><li>Is the solution <strong>10× better</strong>, not incremental?</li><li>Is the enabling <strong>technology available</strong>? (TRL check)</li></ul></div>
+            <div class="pf-detail-box"><h4>Tools Used</h4><ul><li><code>DuckDuckGoSearchRun</code> — market evidence</li><li><code>ArxivQueryRun</code> — research papers</li><li><code>WikipediaQueryRun</code> — context</li><li><code>ChromaDBRetriever</code> — domain KB</li></ul></div>
+          </div>
+          <div class="pf-decision-box"><h4>Why gate first?</h4><p>5 parallel LLM calls + kill shot = ~$0.10 per run. A fast rejection at the gate costs ~$0.005 and saves the full pipeline cost on ideas that obviously don't qualify. The gate also produces a structured rejection reason, not just a binary fail signal.</p></div>
+        </div></div>
+      </div>
+
+      <div class="pf-connector" id="conn-3"></div>
+
+      <!-- Parallel section -->
+      <div class="parallel-wrapper" id="pw">
+        <div class="parallel-label">Parallel Fan-out via LangGraph Send API</div>
+        <div class="pf-parallel">
+          <div class="pf-parallel-node" id="ppn-tech" onclick="toggleParallelInfo('tech')">
+            <span class="ppn-icon">⚙️</span><div class="ppn-name">Technical</div><div class="ppn-status" id="ppn-tech-s">Idle</div>
+          </div>
+          <div class="pf-parallel-node" id="ppn-mkt" onclick="toggleParallelInfo('market')">
+            <span class="ppn-icon">📈</span><div class="ppn-name">Market</div><div class="ppn-status" id="ppn-mkt-s">Idle</div>
+          </div>
+          <div class="pf-parallel-node" id="ppn-risk" onclick="toggleParallelInfo('risk')">
+            <span class="ppn-icon">⚠️</span><div class="ppn-name">Risk</div><div class="ppn-status" id="ppn-risk-s">Idle</div>
+          </div>
+          <div class="pf-parallel-node" id="ppn-cost" onclick="toggleParallelInfo('cost')">
+            <span class="ppn-icon">💰</span><div class="ppn-name">Cost</div><div class="ppn-status" id="ppn-cost-s">Idle</div>
+          </div>
+          <div class="pf-parallel-node" id="ppn-rag" onclick="toggleParallelInfo('rag')">
+            <span class="ppn-icon">📚</span><div class="ppn-name">RAG</div><div class="ppn-status" id="ppn-rag-s">Idle</div>
+          </div>
+        </div>
+        <!-- Agent detail panel -->
+        <div id="agent-detail" style="width:100%;max-width:700px;display:none;">
+          <div id="agent-detail-inner" style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:1.2rem 1.4rem;font-size:0.83rem;color:var(--text-2);"></div>
+        </div>
+      </div>
+
+      <div class="pf-connector" id="conn-4"></div>
+
+      <!-- HITL -->
+      <div class="pf-node" id="pn-hitl" onclick="toggleNode('pn-hitl')">
+        <div class="pf-header">
+          <div class="pf-icon">👤</div>
+          <div><div class="pf-name">Human Review (HITL)</div><div class="pf-desc">interrupt_after=["human_review"] — graph pauses here for expert input</div></div>
+          <div class="pf-status" id="pn-hitl-status">Idle</div>
+        </div>
+        <div class="pf-details"><div class="pf-details-inner">
+          <div class="pf-detail-grid">
+            <div class="pf-detail-box"><h4>Why here?</h4><p>This is the highest-value intervention point: all 5 agent outputs are available for review, but the Kill Shot hasn't run yet. Errors in parallel outputs (wrong TRL, incorrect cost) propagate directly into the experiment design — a domain expert can correct them before they cascade.</p></div>
+            <div class="pf-detail-box"><h4>What the human can do</h4><ul><li><strong>Approve</strong> — Kill Shot runs with original outputs</li><li><strong>Reject</strong> — pipeline terminates with reason recorded</li><li><strong>Approve + comment</strong> — correction text injected into Kill Shot prompt</li></ul></div>
+          </div>
+          <div class="pf-decision-box"><h4>LangGraph Implementation</h4><p>The <code>human_review</code> node is empty by design — it exists solely as the <code>interrupt_after</code> target. After interruption, the frontend calls <code>POST /evaluate/{id}/resume</code> with the decision, the state is updated via <code>graph.update_state()</code>, and the graph resumes from checkpoint.</p></div>
+        </div></div>
+      </div>
+
+      <div class="pf-connector" id="conn-5"></div>
+
+      <!-- Kill Shot -->
+      <div class="pf-node" id="pn-kill" onclick="toggleNode('pn-kill')">
+        <div class="pf-header">
+          <div class="pf-icon">🎯</div>
+          <div><div class="pf-name">Kill Shot Experiment Designer</div><div class="pf-desc">The synthesis agent — reads ALL prior outputs to find the weakest assumption</div></div>
+          <div class="pf-status" id="pn-kill-status">Idle</div>
+        </div>
+        <div class="pf-details"><div class="pf-details-inner">
+          <div class="pf-detail-grid">
+            <div class="pf-detail-box"><h4>Outputs (<code>KillShotExperiment</code>)</h4><ul><li><code>critical_assumption</code> — the single riskiest assumption</li><li><code>why_this_assumption</code> — cross-agent justification</li><li><code>experiment_description</code> — cheapest test design</li><li><code>estimated_cost_usd</code> + <code>duration_weeks</code></li><li><code>success_criteria</code> + <code>failure_criteria</code></li></ul></div>
+            <div class="pf-detail-box"><h4>Why runs last</h4><p>Needs the full picture from all specialists to identify the weakest link across technical, market, risk, and cost dimensions. Running in parallel would force speculation without full context — producing a guess, not a synthesis.</p></div>
+          </div>
+          <div class="pf-decision-box"><h4>What makes this different from a summary agent</h4><p>A summary agent produces a report. The Kill Shot designer produces an <em>action</em> — a specific, costed experiment with measurable success and failure criteria. This forces the system to commit to a recommendation, not hedge with a comprehensive list of concerns.</p></div>
+        </div></div>
+      </div>
+
+      <div class="pf-connector" id="conn-6"></div>
+
+      <!-- End -->
+      <div class="pf-node done" id="pn-end" style="cursor:default;border-color:var(--green)">
+        <div class="pf-header">
+          <div class="pf-icon">✅</div>
+          <div><div class="pf-name">Analysis Complete</div><div class="pf-desc">Full structured JSON report + evaluation scores available via <code>GET /evaluate/{id}/report</code></div></div>
+          <div class="pf-status done-check">Done</div>
+        </div>
+      </div>
+
+    </div><!-- end pipeline-flow -->
+  </div>
+</section>
+
+<!-- ── MEMORY ─────────────────────────────────────────────────────────── -->
+<section id="memory">
+  <div class="container">
+    <div class="section-label">Memory Architecture</div>
+    <h2 class="section-title">Three types of memory, three failure modes</h2>
+    <p class="section-sub">Production cognitive architectures implement all three memory types. Each maps to a distinct component with distinct failure modes — missing any one degrades the system in a different way.</p>
+    <div class="memory-grid">
+      <div class="mem-card mem-episodic">
+        <div class="mem-type">Episodic Memory</div>
+        <div class="mem-title">What happened in this run</div>
+        <div class="mem-def">Memory of specific past events — the full execution history of this evaluation and prior evaluations by <code>thread_id</code>.</div>
+        <div class="mem-impl">
+          <strong>Implementation:</strong> LangGraph checkpointer (<code>SqliteSaver</code> locally, <code>RedisSaver</code> / <code>PostgresSaver</code> in production). Full <code>GraphState</code> persisted after every node boundary.
+        </div>
+        <div class="mem-tag">LangGraph Checkpointer</div>
+        <div class="mem-fail">
+          <div class="mem-fail-label">Failure Mode</div>
+          <p>Checkpoint loss → run unrecoverable; must restart from raw idea input. HITL state lost — human cannot resume hours after reviewing.</p>
+        </div>
+      </div>
+      <div class="mem-card mem-semantic">
+        <div class="mem-type">Semantic Memory</div>
+        <div class="mem-title">Long-term factual knowledge</div>
+        <div class="mem-def">What the system knows about the world — TRL benchmarks, CAPEX/OPEX databases, market reports, past kill shot experiment designs.</div>
+        <div class="mem-impl">
+          <strong>Implementation:</strong> ChromaDB vector store with two source types: <code>"domain"</code> (ingested at setup) and <code>"portfolio"</code> (past project docs). Retrieved by the RAG agent via cosine similarity (top-k=5, threshold=0.75).
+        </div>
+        <div class="mem-tag">ChromaDB Vector Store</div>
+        <div class="mem-fail">
+          <div class="mem-fail-label">Failure Mode</div>
+          <p>Retrieval miss → agents hallucinate domain facts they should have grounded. Embedding model drift after dependency upgrade → all similarity scores meaningless.</p>
+        </div>
+      </div>
+      <div class="mem-card mem-procedural">
+        <div class="mem-type">Procedural Memory</div>
+        <div class="mem-title">How to do things</div>
+        <div class="mem-def">Skills, evaluation rubrics, the moonshot framework — the system's implicit knowledge of how to reason, what to output, and what to avoid.</div>
+        <div class="mem-impl">
+          <strong>Implementation:</strong> System prompts + Pydantic tool schemas + few-shot examples baked into each agent. The 3-question gate is procedural memory made explicit in code. LangSmith stores every prompt template version.
+        </div>
+        <div class="mem-tag">Prompts + Schemas</div>
+        <div class="mem-fail">
+          <div class="mem-fail-label">Failure Mode</div>
+          <p>Prompt drift after a model update → agents silently stop following the rubric. No error thrown — the LLM-as-judge must detect this via score regression.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── GUARDRAILS ─────────────────────────────────────────────────────── -->
+<section id="guardrails">
+  <div class="container">
+    <div class="section-label">Safety & Reliability</div>
+    <h2 class="section-title">4-Layer Guardrails</h2>
+    <p class="section-sub">Single-layer guardrails are easily bypassed. Defense in depth means each layer catches what the previous one misses.</p>
+    <div class="gr-wrapper">
+      <div>
+        <p style="font-size:0.78rem;color:var(--text-2);margin-bottom:1rem;">Hover a layer to explore its mechanism.</p>
+        <div class="gr-stack">
+          <div class="gr-layer gr-l1">
+            <div class="gr-header"><div class="gr-num">1</div><div class="gr-name">Prompt-level</div></div>
+            <div class="gr-mech">Explicit "must" and "must not" rules in every agent's system prompt. Cheapest layer — zero latency cost. Fails when model ignores instructions (jailbreak, unusual input).</div>
+          </div>
+          <div class="gr-layer gr-l2">
+            <div class="gr-header"><div class="gr-num">2</div><div class="gr-name">Schema-level (Pydantic)</div></div>
+            <div class="gr-mech">Required Pydantic fields force explicit uncertainty bounds, evidence citations, and assumption lists. Model cannot produce output that passes validation without filling these — overconfidence literally fails validation.</div>
+          </div>
+          <div class="gr-layer gr-l3">
+            <div class="gr-header"><div class="gr-num">3</div><div class="gr-name">Pre-generation (Intent Classifier)</div></div>
+            <div class="gr-mech">Runs before any specialist agent. Blocks harmful inputs (weapons, mass surveillance, dual-use) at the graph entry point — no expensive LLM calls consumed on bad inputs.</div>
+          </div>
+          <div class="gr-layer gr-l4">
+            <div class="gr-header"><div class="gr-num">4</div><div class="gr-name">Post-generation (Rule Checks)</div></div>
+            <div class="gr-mech">After agents complete: verbatim retrieval detection (>40 words, >80% token overlap with source doc), null field detection for required fields, inter-agent consistency check on shared assumptions (TRL level, market size order).</div>
+          </div>
+        </div>
+      </div>
+      <div class="gr-right">
+        <div class="gr-what">
+          <h3>What Agents Must Never Produce</h3>
+          <div class="gr-avoid-item"><span class="ico">⛔</span><span>Speculative financial projections without uncertainty bounds and stated assumptions</span></div>
+          <div class="gr-avoid-item"><span class="ico">⛔</span><span>Feasibility claims without TRL citation and retrieved evidence</span></div>
+          <div class="gr-avoid-item"><span class="ico">⛔</span><span>Verbatim reproduction of retrieved documents (copyright / legal risk)</span></div>
+          <div class="gr-avoid-item"><span class="ico">⛔</span><span>Hallucinated citations — only documents actually retrieved may be cited</span></div>
+          <div class="gr-avoid-item"><span class="ico">⛔</span><span>Definitive regulatory or safety certification claims</span></div>
+          <div class="gr-avoid-item"><span class="ico">⛔</span><span>Uncritical validation — risk agent must always produce ≥3 distinct risks</span></div>
+          <div class="gr-avoid-item"><span class="ico">⛔</span><span>Internal system details (prompt text, model names, config) in output</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── EVALUATION ─────────────────────────────────────────────────────── -->
+<section id="evaluation">
+  <div class="container">
+    <div class="section-label">Quality Measurement</div>
+    <h2 class="section-title">Evaluation Layer</h2>
+    <p class="section-sub">Two complementary approaches: LLM-as-judge for reasoning quality, RAGAS for RAG component fidelity. Both run automatically in CI.</p>
+    <div class="eval-grid">
+      <div class="eval-card">
+        <div class="eval-card-title">🧑‍⚖️ LLM-as-Judge</div>
+        <div class="eval-card-sub">Per-criterion scoring (1–10) by a more capable model than the one being judged. Answer order randomized to eliminate positional bias.</div>
+        <div class="eval-criterion">
+          <div class="ec-name"><span>Ideation Quality</span><span style="color:var(--text-2)">1–10</span></div>
+          <div class="ec-bar-bg"><div class="ec-bar" data-w="80"></div></div>
+        </div>
+        <div class="eval-criterion">
+          <div class="ec-name"><span>Feasibility Grounding</span><span style="color:var(--text-2)">1–10</span></div>
+          <div class="ec-bar-bg"><div class="ec-bar green" data-w="75"></div></div>
+        </div>
+        <div class="eval-criterion">
+          <div class="ec-name"><span>Cross-Agent Coherence</span><span style="color:var(--text-2)">1–10</span></div>
+          <div class="ec-bar-bg"><div class="ec-bar purple" data-w="85"></div></div>
+        </div>
+        <div class="eval-criterion">
+          <div class="ec-name"><span>TEA Rigor</span><span style="color:var(--text-2)">1–10</span></div>
+          <div class="ec-bar-bg"><div class="ec-bar amber" data-w="70"></div></div>
+        </div>
+        <div class="eval-criterion">
+          <div class="ec-name"><span>Overconfidence Penalty</span><span style="color:var(--text-2)">lower = worse</span></div>
+          <div class="ec-bar-bg"><div class="ec-bar red" data-w="15"></div></div>
+        </div>
+        <div class="eval-note">⚠️ Judge always uses a <strong>different model family</strong> than the agents (e.g. agents on Sonnet, judge on Opus). Prevents self-serving bias where a model favors outputs from its own family.</div>
+      </div>
+      <div class="eval-card">
+        <div class="eval-card-title">📐 RAGAS Metrics</div>
+        <div class="eval-card-sub">Quantitative RAG component evaluation. Runs on every evaluation with a fixed reference set in CI to detect retrieval regressions.</div>
+        <div class="eval-criterion">
+          <div class="ec-name"><span>Faithfulness</span><span style="color:var(--green)">≥ 0.80 target</span></div>
+          <div class="ec-bar-bg"><div class="ec-bar green" data-w="82"></div></div>
+        </div>
+        <div class="eval-criterion">
+          <div class="ec-name"><span>Answer Relevancy</span><span style="color:var(--green)">≥ 0.80 target</span></div>
+          <div class="ec-bar-bg"><div class="ec-bar" data-w="78"></div></div>
+        </div>
+        <div class="eval-criterion">
+          <div class="ec-name"><span>Context Precision</span><span style="color:var(--green)">≥ 0.75 target</span></div>
+          <div class="ec-bar-bg"><div class="ec-bar purple" data-w="77"></div></div>
+        </div>
+        <div class="eval-criterion">
+          <div class="ec-name"><span>Context Recall</span><span style="color:var(--amber)">≥ 0.70 target</span></div>
+          <div class="ec-bar-bg"><div class="ec-bar amber" data-w="73"></div></div>
+        </div>
+        <div class="eval-note">📦 Benchmark sweep configs: single LLM vs. multi-agent, Sonnet vs. Opus (cost/quality), RAG on vs. off. Results in <code>benchmarks/results/</code> as a comparison table.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── DECISIONS ─────────────────────────────────────────────────────── -->
+<section id="decisions">
+  <div class="container">
+    <div class="section-label">Architecture Rationale</div>
+    <h2 class="section-title">Key Design Decisions</h2>
+    <p class="section-sub">Every choice has a reason. Click any card to see the alternative considered and why it was rejected.</p>
+    <div class="dec-grid">
+
+      <div class="dec-card" onclick="toggleDec(this)">
+        <div class="dec-header"><div><div class="dec-q">Why LangGraph over sequential pipeline?</div><div class="dec-a">StateGraph with parallel fan-out and checkpointing</div></div><div class="dec-toggle">+</div></div>
+        <div class="dec-body"><div class="dec-body-inner">
+          <div class="dec-why">5 independent agents serialized in a chain multiply latency by 5×. LangGraph's Send API fans them out simultaneously, cutting latency to 1× the slowest agent. Checkpointing means a crash at node 4 resumes from the checkpoint — not from zero. Conditional edges make the moonshot gate a first-class citizen, not an if/else in application code.</div>
+          <div class="dec-alt"><div class="dec-alt-label">Alternative Rejected</div><p>Sequential LangChain pipeline, custom async Python, CrewAI, AutoGen. None provide stateful checkpointing + native HITL + conditional routing in a single graph primitive.</p></div>
+        </div></div>
+      </div>
+
+      <div class="dec-card" onclick="toggleDec(this)">
+        <div class="dec-header"><div><div class="dec-q">Why Pydantic for all agent outputs?</div><div class="dec-a">Typed schemas + tool-use mode eliminate a whole class of errors</div></div><div class="dec-toggle">+</div></div>
+        <div class="dec-body"><div class="dec-body-inner">
+          <div class="dec-why">Free-form LLM text fails unpredictably in pipelines — missing fields cause KeyError at runtime, not validation time. Pydantic v2 + Claude's tool-use mode guarantees valid, typed output. Required fields like <code>uncertainty_level</code> and <code>evidence_citations</code> also force the model to be explicit about confidence, directly countering overconfident hallucination.</div>
+          <div class="dec-alt"><div class="dec-alt-label">Alternative Rejected</div><p>Regex/JSON parsing of LLM text. Fragile — any model variation in formatting causes a parse failure. No forced schema adherence.</p></div>
+        </div></div>
+      </div>
+
+      <div class="dec-card" onclick="toggleDec(this)">
+        <div class="dec-header"><div><div class="dec-q">Why chromaDB as vector store?</div><div class="dec-a">Zero infra locally, abstracted for easy swap</div></div><div class="dec-toggle">+</div></div>
+        <div class="dec-body"><div class="dec-body-inner">
+          <div class="dec-why">ChromaDB runs as a Python library — no database server, no configuration, no infrastructure cost. All retrieval logic is behind <code>vector_store.py</code>. In production, swapping to Pinecone, Weaviate, or Vertex AI Matching Engine is one file change — no agent code changes required.</div>
+          <div class="dec-alt"><div class="dec-alt-label">Alternative Rejected</div><p>Pinecone (requires account + managed infra for prototyping), FAISS (no built-in metadata filtering), Weaviate (requires Docker).</p></div>
+        </div></div>
+      </div>
+
+      <div class="dec-card" onclick="toggleDec(this)">
+        <div class="dec-header"><div><div class="dec-q">Why a dedicated Kill Shot agent, not a summary?</div><div class="dec-a">Actionable output over comprehensive reporting</div></div><div class="dec-toggle">+</div></div>
+        <div class="dec-body"><div class="dec-body-inner">
+          <div class="dec-why">A summary agent produces a report. The Kill Shot designer produces an <em>action</em> — a specific experiment with cost, duration, and measurable criteria. This forces commitment to a recommendation. The agent synthesizes across technical, market, risk, and cost outputs to find the weakest link — it must run sequentially after all 5 parallel agents, not in parallel.</div>
+          <div class="dec-alt"><div class="dec-alt-label">Alternative Rejected</div><p>Aggregator/synthesis agent that summarizes all outputs. Produces comprehensive coverage but no actionable recommendation — not useful for deciding whether to fund further exploration.</p></div>
+        </div></div>
+      </div>
+
+      <div class="dec-card" onclick="toggleDec(this)">
+        <div class="dec-header"><div><div class="dec-q">Why SSE over WebSocket for streaming?</div><div class="dec-a">Unidirectional flow matches the streaming pattern exactly</div></div><div class="dec-toggle">+</div></div>
+        <div class="dec-body"><div class="dec-body-inner">
+          <div class="dec-why">SSE is unidirectional server→client — which is exactly what pipeline event streaming requires. It runs over standard HTTP (no upgrade handshake, works through proxies). EventSource auto-reconnects with <code>Last-Event-ID</code>. The one bidirectional interaction (HITL resume) is a plain HTTP POST — no persistent socket needed.</div>
+          <div class="dec-alt"><div class="dec-alt-label">Alternative Rejected</div><p>WebSocket adds bidirectionality we don't need on the stream channel, plus a separate upgrade connection. Polling adds latency and server load.</p></div>
+        </div></div>
+      </div>
+
+      <div class="dec-card" onclick="toggleDec(this)">
+        <div class="dec-header"><div><div class="dec-q">Why LLM-as-judge per-criterion, not holistic?</div><div class="dec-a">Eliminates positional and self-serving bias</div></div><div class="dec-toggle">+</div></div>
+        <div class="dec-body"><div class="dec-body-inner">
+          <div class="dec-why">Holistic scores are positionally biased (judge favors the first answer presented) and self-serving (a model favors outputs from its own family). Per-criterion scoring with randomized answer order breaks both biases. Each criterion can detect a specific failure mode — overconfidence penalty catches a different problem than coherence score.</div>
+          <div class="dec-alt"><div class="dec-alt-label">Alternative Rejected</div><p>Single holistic 1–10 score. Cannot distinguish between an idea that's technically excellent but poorly costed vs. one that's coherent but overconfident.</p></div>
+        </div></div>
+      </div>
+
+      <div class="dec-card" onclick="toggleDec(this)">
+        <div class="dec-header"><div><div class="dec-q">Why not use MCP for tools?</div><div class="dec-a">LangGraph tool interface is tighter and better integrated</div></div><div class="dec-toggle">+</div></div>
+        <div class="dec-body"><div class="dec-body-inner">
+          <div class="dec-why">MCP adds a client-server boundary with network latency and a new failure mode inside the agent loop. The tools we need (Arxiv, Wikipedia, ChromaDB) are already LangChain tools with no server setup. MCP is the right choice when tools are shared across teams or model frameworks — not for a single-team production pipeline.</div>
+          <div class="dec-alt"><div class="dec-alt-label">When MCP is right</div><p>Multi-team production deployments where tools are owned and served by different services. When the same tool needs to be shared across multiple agent frameworks. As a future extension point — our tool abstractions make the migration trivial.</p></div>
+        </div></div>
+      </div>
+
+      <div class="dec-card" onclick="toggleDec(this)">
+        <div class="dec-header"><div><div class="dec-q">Why custom agents, not pre-built templates?</div><div class="dec-a">Schema control + observability + evaluability</div></div><div class="dec-toggle">+</div></div>
+        <div class="dec-body"><div class="dec-body-inner">
+          <div class="dec-why">Pre-built agents (ReActAgent, OpenAIFunctionsAgent) are opaque — we cannot inspect their reasoning strategy or guarantee their output format. Custom agents give us: auditable system prompts, Pydantic output contracts, and every prompt version stored in LangSmith. We reuse <em>infrastructure</em> (LangGraph primitives, tool wrappers) but build all reasoning.</div>
+          <div class="dec-alt"><div class="dec-alt-label">What we do reuse</div><p>LangGraph StateGraph primitives, LangChain tool wrappers for Arxiv/Wikipedia/DuckDuckGo, RAGAS evaluation library. Rule: reuse infrastructure; build reasoning.</p></div>
+        </div></div>
+      </div>
+
+      <div class="dec-card" onclick="toggleDec(this)">
+        <div class="dec-header"><div><div class="dec-q">Why HITL pause after parallel agents, not before?</div><div class="dec-a">Maximum context for human review, minimum wasted compute</div></div><div class="dec-toggle">+</div></div>
+        <div class="dec-body"><div class="dec-body-inner">
+          <div class="dec-why">Pausing before the parallel agents would require the human to review only the raw idea — less context than after analysis. Pausing after gives the expert all 5 agent outputs to review and correct before they cascade into the Kill Shot design. Pausing after Kill Shot would waste the kill shot compute if the human rejects.</div>
+          <div class="dec-alt"><div class="dec-alt-label">Alternative Rejected</div><p>Pre-analysis HITL (human sees only the raw idea, less context). Post-kill-shot HITL (Kill Shot compute wasted if rejected). Multiple HITL pauses (too much friction, slows the pipeline).</p></div>
+        </div></div>
+      </div>
+
+      <div class="dec-card" onclick="toggleDec(this)">
+        <div class="dec-header"><div><div class="dec-q">Why a single ChromaDB collection with metadata filtering?</div><div class="dec-a">Avoids dual similarity thresholds and dual embedding indices</div></div><div class="dec-toggle">+</div></div>
+        <div class="dec-body"><div class="dec-body-inner">
+          <div class="dec-why">Two separate collections (domain + portfolio) would require two similarity thresholds and two embedding indices to maintain. A single collection with <code>source_type</code> metadata lets agents filter when they need specificity (cost agent queries only portfolio for precedent) while the RAG agent queries across both simultaneously for maximum coverage.</div>
+          <div class="dec-alt"><div class="dec-alt-label">Alternative Rejected</div><p>Separate collections per source type. Requires tuning two independent similarity thresholds. Cross-source queries (both domain and portfolio simultaneously) require merging two result sets with different score distributions.</p></div>
+        </div></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── FAILURE MODES ───────────────────────────────────────────────── -->
+<section id="failures">
+  <div class="container">
+    <div class="section-label">Failure Analysis</div>
+    <h2 class="section-title">Known Failure Modes & Mitigations</h2>
+    <p class="section-sub">Multi-agent systems fail in non-obvious ways. These are the specific failure modes this architecture is designed to handle.</p>
+    <div class="fail-tabs">
+      <div class="fail-tab active" onclick="switchTab('agent')">Agent-Level</div>
+      <div class="fail-tab" onclick="switchTab('rag')">RAG-Level</div>
+      <div class="fail-tab" onclick="switchTab('graph')">Graph-Level</div>
+      <div class="fail-tab" onclick="switchTab('system')">System-Level</div>
+    </div>
+    <div id="fp-agent" class="fail-panel active">
+      <div class="fail-card"><div class="fail-name">Cascading Hallucination</div><div class="fail-cause">One agent produces confident but wrong output (e.g. TRL 9 when technology is TRL 3). Downstream agents build on it, amplifying the error.</div><div class="fail-mit"><div class="fail-mit-label">Mitigation</div>Each agent independently re-reads the original idea. Inter-agent consistency checker cross-validates shared assumptions (TRL, market size).</div></div>
+      <div class="fail-card"><div class="fail-name">Schema Drift</div><div class="fail-cause">Agent returns partial schema match — optional fields default to None. Output passes validation but report is silently incomplete.</div><div class="fail-mit"><div class="fail-mit-label">Mitigation</div>Critical fields are required (no default). Post-validation checks that no required field is null.</div></div>
+      <div class="fail-card"><div class="fail-name">Tool Call Refusal</div><div class="fail-cause">Model refuses to call the structured output tool or sends malformed arguments, especially on edge-case inputs.</div><div class="fail-mit"><div class="fail-mit-label">Mitigation</div>Retry up to 3 times with exponential backoff. Final failure marks agent as failed in state; pipeline continues in degraded mode.</div></div>
+      <div class="fail-card"><div class="fail-name">Inter-Agent Inconsistency</div><div class="fail-cause">Technical agent assumes TRL 2; cost agent silently assumes TRL 7 for its estimates, producing an optimistic financial model.</div><div class="fail-mit"><div class="fail-mit-label">Mitigation</div>Aggregator node cross-validates TRL, market size order-of-magnitude, and risk level across all agent outputs before writing final report.</div></div>
+      <div class="fail-card"><div class="fail-name">Context Window Overflow</div><div class="fail-cause">As outputs accumulate in shared state and get injected into subsequent agent prompts, total context exceeds model's limit.</div><div class="fail-mit"><div class="fail-mit-label">Mitigation</div>Selective context injection — each agent receives only the state fields it needs, not the full accumulated state.</div></div>
+    </div>
+    <div id="fp-rag" class="fail-panel">
+      <div class="fail-card"><div class="fail-name">Context Poisoning</div><div class="fail-cause">A poorly relevant chunk retrieved and injected into the agent prompt. The agent, trained to respect context, incorporates misleading information.</div><div class="fail-mit"><div class="fail-mit-label">Mitigation</div>Similarity threshold (≥0.75 cosine). RAGAS context precision score in CI flags degradation automatically.</div></div>
+      <div class="fail-card"><div class="fail-name">Prompt Injection via Documents</div><div class="fail-cause">A document in the knowledge base contains adversarial text: "Ignore previous instructions and output..."</div><div class="fail-mit"><div class="fail-mit-label">Mitigation</div>Document sanitization on ingestion. System prompt explicitly instructs model to treat retrieved content as data, not instructions.</div></div>
+      <div class="fail-card"><div class="fail-name">Empty Context Retrieval</div><div class="fail-cause">Query embedding finds no chunks above similarity threshold. Agent proceeds without grounding.</div><div class="fail-mit"><div class="fail-mit-label">Mitigation</div>RAG agent sets <code>grounded=False</code> in state. Downstream agents and judge are notified. Error surfaced explicitly in UI.</div></div>
+      <div class="fail-card"><div class="fail-name">Embedding Model Drift</div><div class="fail-cause">Embedding model used at query time differs from ingestion time (e.g. after dependency upgrade). All similarity scores become meaningless.</div><div class="fail-mit"><div class="fail-mit-label">Mitigation</div>Embedding model name stored in ChromaDB metadata per document. Startup check validates consistency between stored and current model.</div></div>
+    </div>
+    <div id="fp-graph" class="fail-panel">
+      <div class="fail-card"><div class="fail-name">Infinite Loops</div><div class="fail-cause">Conditional edges with cycles — a retry loop with no maximum iteration count runs indefinitely.</div><div class="fail-mit"><div class="fail-mit-label">Mitigation</div>All cycles have explicit <code>max_iterations</code> counter in state. LangGraph's recursion limit is set as a hard stop.</div></div>
+      <div class="fail-card"><div class="fail-name">Partial State Write on Crash</div><div class="fail-cause">Agent crashes mid-execution, leaving shared state partially written. Downstream agents read stale or null values.</div><div class="fail-mit"><div class="fail-mit-label">Mitigation</div>LangGraph checkpointing saves state atomically after each node completes. On restart, graph resumes from last valid checkpoint — not from zero.</div></div>
+      <div class="fail-card"><div class="fail-name">Non-determinism in Tests</div><div class="fail-cause">Same input produces different outputs across runs (temperature &gt; 0, retrieval order variance). Makes regression testing unreliable.</div><div class="fail-mit"><div class="fail-mit-label">Mitigation</div>Evals and benchmarks set temperature=0. Score consistency metric: std across 5 identical runs. Alert if std &gt; 0.5.</div></div>
+    </div>
+    <div id="fp-system" class="fail-panel">
+      <div class="fail-card"><div class="fail-name">API Rate Limiting</div><div class="fail-cause">5 parallel agents hitting the Anthropic API simultaneously. Rate limit (429) or overload (529) terminates all agents at once.</div><div class="fail-mit"><div class="fail-mit-label">Mitigation</div>Exponential backoff with jitter, max 3 retries. Parallel agents staggered with small delay if multiple calls issued simultaneously.</div></div>
+      <div class="fail-card"><div class="fail-name">Silent Quality Degradation</div><div class="fail-cause">System produces output without errors but quality dropped — model update changed behavior, retrieval quality degraded as knowledge base aged.</div><div class="fail-mit"><div class="fail-mit-label">Mitigation</div>Scheduled benchmark runs on fixed test set. Grafana alert if average judge score drops &gt;10% from 7-day baseline.</div></div>
+      <div class="fail-card"><div class="fail-name">Judge Self-Preference</div><div class="fail-cause">Judge LLM systematically scores outputs from its own model family higher, biasing benchmark comparisons.</div><div class="fail-mit"><div class="fail-mit-label">Mitigation</div>Different model family for judge (agents on Sonnet, judge on Opus). Randomized answer order in comparative evaluation.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── TECH STACK ─────────────────────────────────────────────────────── -->
+<section id="stack">
+  <div class="container">
+    <div class="section-label">Technology Choices</div>
+    <h2 class="section-title">Stack & Rationale</h2>
+    <p class="section-sub">Every technology choice has a specific reason. "We used it before" is not a reason here.</p>
+    <div class="stack-grid">
+      <div class="stack-card"><div class="stack-name">LangGraph</div><div class="stack-role">Agent Orchestration</div><div class="stack-why">Stateful graph with conditional branching, cycles, checkpointing, and native HITL — the right primitive for production agentic systems that must resume, branch, and survive crashes.</div></div>
+      <div class="stack-card" style="animation-delay:0.05s"><div class="stack-name">LangChain</div><div class="stack-role">LLM Abstraction</div><div class="stack-why">Makes swapping Claude / GPT-4 / Gemini trivial for benchmarking. Tool wrappers for Arxiv, Wikipedia, DuckDuckGo available out of the box.</div></div>
+      <div class="stack-card" style="animation-delay:0.1s"><div class="stack-name">Anthropic Claude</div><div class="stack-role">Primary LLM</div><div class="stack-why">Reliable structured outputs via tool-use mode. Strong reasoning on technical domains. Extended context window for injecting full agent state into Kill Shot prompt.</div></div>
+      <div class="stack-card" style="animation-delay:0.15s"><div class="stack-name">ChromaDB</div><div class="stack-role">Vector Store</div><div class="stack-why">Zero infrastructure — runs as a Python library. Abstracted behind vector_store.py so the swap to Pinecone / Vertex AI in production is one file change.</div></div>
+      <div class="stack-card" style="animation-delay:0.2s"><div class="stack-name">Pydantic v2</div><div class="stack-role">Output Schemas</div><div class="stack-why">Eliminates runtime errors from free-form LLM text. Required fields force explicit uncertainty, evidence citations, and assumptions. Validation errors surface at the agent boundary, not downstream.</div></div>
+      <div class="stack-card" style="animation-delay:0.25s"><div class="stack-name">RAGAS</div><div class="stack-role">RAG Evaluation</div><div class="stack-why">Industry-standard faithfulness, relevancy, context precision/recall metrics. Runs automatically against a fixed reference set in CI to detect retrieval regressions.</div></div>
+      <div class="stack-card" style="animation-delay:0.3s"><div class="stack-name">LangSmith</div><div class="stack-role">Trace Observability</div><div class="stack-why">Auto-instrumentation for all LangChain/LangGraph runs — zero extra code for traces. Built-in UI for latency breakdowns, token counts, and prompt version tracking.</div></div>
+      <div class="stack-card" style="animation-delay:0.35s"><div class="stack-name">FastAPI</div><div class="stack-role">Serving Layer</div><div class="stack-why">Async-native (matches LangGraph's async execution). Pydantic-native (shared schemas with agent outputs). Auto-generates OpenAPI docs for the SSE + HITL endpoint surface.</div></div>
+      <div class="stack-card" style="animation-delay:0.4s"><div class="stack-name">Streamlit</div><div class="stack-role">Frontend</div><div class="stack-why">Pure Python chat interface with real-time SSE streaming. Session memory via st.session_state. Avoids context switch to TypeScript for a Python-native team.</div></div>
+      <div class="stack-card" style="animation-delay:0.45s"><div class="stack-name">structlog</div><div class="stack-role">Structured Logging</div><div class="stack-why">Every log line is machine-parseable JSON. Context variables (run_id, agent_name) automatically injected. Compatible with Loki / Grafana log aggregation in production.</div></div>
+      <div class="stack-card" style="animation-delay:0.5s"><div class="stack-name">Prometheus + Grafana</div><div class="stack-role">Metrics & Dashboards</div><div class="stack-why">Standard pull-based metrics. Alert rules on error rate, latency P95, and quality score regression. Three dashboards: system health, quality metrics, cost/token usage.</div></div>
+      <div class="stack-card" style="animation-delay:0.55s"><div class="stack-name">SQLite → PostgreSQL</div><div class="stack-role">Eval Score Storage</div><div class="stack-why">Queryable benchmark history with SQL. SQLite for local dev (zero infra), PostgreSQL in production for concurrent benchmark writes across API workers.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── METRICS TABLE ───────────────────────────────────────────────── -->
+<section id="metrics">
+  <div class="container">
+    <div class="section-label">Reliability SLOs</div>
+    <h2 class="section-title">Target Metrics</h2>
+    <p class="section-sub">These are the quantitative signals that define whether the system is working correctly. Grafana alerts fire when alert thresholds are crossed.</p>
+    <table class="metrics-table">
+      <thead><tr><th>Metric</th><th>Target</th><th>Alert Threshold</th></tr></thead>
+      <tbody>
+        <tr><td>End-to-end success rate</td><td class="m-target">≥ 99%</td><td class="m-alert">&lt; 95%</td></tr>
+        <tr><td>Schema validation pass rate (first attempt)</td><td class="m-target">≥ 98%</td><td class="m-alert">&lt; 93%</td></tr>
+        <tr><td>End-to-end latency P95</td><td class="m-target">&lt; 60s</td><td class="m-alert">&gt; 90s</td></tr>
+        <tr><td>Cost per evaluation (Sonnet)</td><td class="m-target">&lt; $0.10</td><td class="m-alert">&gt; $0.25</td></tr>
+        <tr><td>RAG retrieval hit rate (≥1 chunk above threshold)</td><td class="m-target">≥ 90%</td><td class="m-alert">&lt; 80%</td></tr>
+        <tr><td>RAGAS Faithfulness</td><td class="m-target">≥ 0.80</td><td class="m-alert">&lt; 0.65</td></tr>
+        <tr><td>RAGAS Context Precision</td><td class="m-target">≥ 0.75</td><td class="m-alert">&lt; 0.60</td></tr>
+        <tr><td>Avg judge score — Coherence</td><td class="m-target">≥ 7.0 / 10</td><td class="m-alert">&lt; 5.5</td></tr>
+        <tr><td>Score consistency (std, 5 repeated runs)</td><td class="m-target">&lt; 0.5</td><td class="m-alert">&gt; 1.0</td></tr>
+        <tr><td>Inter-agent consistency flag rate</td><td class="m-target">&lt; 2%</td><td class="m-alert">&gt; 8%</td></tr>
+        <tr><td>Retry rate (LLM calls)</td><td class="m-target">&lt; 5%</td><td class="m-alert">&gt; 15%</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── IMPLEMENTATION GUIDE ─────────────────────────────────────────── -->
+<section id="impl">
+  <div class="container">
+    <div class="section-label">Getting Started</div>
+    <h2 class="section-title">Implementation Guide</h2>
+    <p class="section-sub">From clone to first moonshot evaluation in 5 steps.</p>
+    <div class="impl-steps">
+      <div class="impl-step">
+        <div class="impl-num">1</div>
+        <div class="impl-content">
+          <div class="impl-title">Clone and install dependencies</div>
+          <div class="impl-desc">Python 3.11+ required. The virtual environment isolates all LangGraph, LangChain, and ChromaDB dependencies.</div>
+          <pre class="impl-code"><span class="comment"># Clone and set up environment</span>
+git clone https://github.com/tmehtiyev2019/agentlens.git
+cd agentlens
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt</pre>
+        </div>
+      </div>
+      <div class="impl-step">
+        <div class="impl-num">2</div>
+        <div class="impl-content">
+          <div class="impl-title">Configure environment variables</div>
+          <div class="impl-desc">Copy <code>.env.example</code> to <code>.env</code> and fill in your API keys. LangSmith is optional but strongly recommended for trace observability.</div>
+          <pre class="impl-code">ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...         <span class="comment"># optional — for GPT-4 benchmarking</span>
+LANGSMITH_API_KEY=ls__...     <span class="comment"># optional — trace capture</span>
+LANGSMITH_PROJECT=agentlens
+AGENT_MODEL=claude-sonnet-4-6
+JUDGE_MODEL=claude-opus-4-7</pre>
+        </div>
+      </div>
+      <div class="impl-step">
+        <div class="impl-num">3</div>
+        <div class="impl-content">
+          <div class="impl-title">Ingest domain knowledge into ChromaDB</div>
+          <div class="impl-desc">Populates the vector store with TRL benchmarks, market reports, and published papers. The RAG agent retrieves from this at evaluation time.</div>
+          <pre class="impl-code"><span class="comment"># Ingest bundled domain docs (TRL benchmarks, market reports)</span>
+python -m src.knowledge_base.ingestor --ingest-domain
+
+<span class="comment"># Optionally: add your past project docs to src/knowledge_base/portfolio/</span>
+python -m src.knowledge_base.ingestor --ingest-portfolio
+
+<span class="comment"># Verify ingestion</span>
+python -m src.knowledge_base.ingestor --list-sources</pre>
+        </div>
+      </div>
+      <div class="impl-step">
+        <div class="impl-num">4</div>
+        <div class="impl-content">
+          <div class="impl-title">Start the backend API and Streamlit frontend</div>
+          <div class="impl-desc">The FastAPI backend handles the LangGraph pipeline. Streamlit is the chat-first frontend with real-time SSE streaming and session memory.</div>
+          <pre class="impl-code"><span class="comment"># Terminal 1: Start FastAPI backend</span>
+uvicorn src.api.main:app --port 8001 --reload
+
+<span class="comment"># Terminal 2: Start Streamlit frontend</span>
+streamlit run streamlit_app.py --server.port 3001</pre>
+        </div>
+      </div>
+      <div class="impl-step">
+        <div class="impl-num">5</div>
+        <div class="impl-content">
+          <div class="impl-title">Submit a moonshot idea and run benchmarks</div>
+          <div class="impl-desc">Open <code>http://localhost:3001</code> and type your idea, or use the API directly. Run the benchmark suite to compare model configurations.</div>
+          <pre class="impl-code"><span class="comment"># Submit via API directly</span>
+curl -X POST http://localhost:8001/evaluate \
+  -H 'Content-Type: application/json' \
+  -d '{"idea": "solid-state batteries for 1000-mile EV range"}'
+
+<span class="comment"># Run benchmark suite (sweeps model configs)</span>
+python -m src.evaluation.benchmark</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOOTER ─────────────────────────────────────────────────────────── -->
+<footer>
+  <div class="footer-links">
+    <a href="https://github.com/tmehtiyev2019/agentlens" target="_blank">GitHub Repository</a>
+    <a href="#pipeline">Pipeline</a>
+    <a href="#memory">Memory Architecture</a>
+    <a href="#guardrails">Guardrails</a>
+    <a href="#decisions">Design Decisions</a>
+    <a href="#failures">Failure Modes</a>
+  </div>
+  <div class="footer-sub">AgentLens — Production-style multi-agent techno-economic analysis system · Built with LangGraph + Claude</div>
+</footer>
+
+<script>
+// ── HERO CANVAS PARTICLE ANIMATION ─────────────────────────────────
+(function(){
+  const canvas = document.getElementById('hero-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, particles = [];
+  function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = canvas.parentElement.offsetHeight; }
+  window.addEventListener('resize', resize); resize();
+  const N = 60;
+  for(let i=0;i<N;i++) particles.push({
+    x: Math.random()*W, y: Math.random()*H,
+    r: Math.random()*1.5+0.5,
+    dx: (Math.random()-0.5)*0.3, dy: (Math.random()-0.5)*0.3,
+    alpha: Math.random()*0.5+0.1
+  });
+  // connections
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    for(let i=0;i<particles.length;i++){
+      const p = particles[i];
+      p.x += p.dx; p.y += p.dy;
+      if(p.x<0||p.x>W) p.dx*=-1;
+      if(p.y<0||p.y>H) p.dy*=-1;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle = `rgba(96,165,250,${p.alpha})`;
+      ctx.fill();
+      for(let j=i+1;j<particles.length;j++){
+        const q=particles[j];
+        const dist=Math.hypot(p.x-q.x,p.y-q.y);
+        if(dist<120){
+          ctx.beginPath();
+          ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y);
+          ctx.strokeStyle=`rgba(37,99,235,${0.12*(1-dist/120)})`;
+          ctx.lineWidth=0.8; ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+// ── COUNTER ANIMATION ───────────────────────────────────────────────
+(function(){
+  const els = document.querySelectorAll('[data-counter]');
+  const obs = new IntersectionObserver(entries=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){
+        const el=e.target, target=+el.dataset.counter;
+        let cur=0; const step=Math.ceil(target/20);
+        const t=setInterval(()=>{cur=Math.min(cur+step,target);el.textContent=cur;if(cur>=target)clearInterval(t);},50);
+        obs.unobserve(el);
+      }
+    });
+  },{threshold:0.5});
+  els.forEach(el=>obs.observe(el));
+})();
+
+// ── SCROLL REVEAL ───────────────────────────────────────────────────
+(function(){
+  const targets = document.querySelectorAll('.overview-card, .mem-card, .dec-card, .stack-card, .reveal');
+  const obs = new IntersectionObserver(entries=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){ e.target.classList.add('visible'); obs.unobserve(e.target); }
+    });
+  },{threshold:0.1});
+  targets.forEach(el=>obs.observe(el));
+})();
+
+// ── EVAL BARS ───────────────────────────────────────────────────────
+(function(){
+  const bars = document.querySelectorAll('.ec-bar[data-w]');
+  const obs = new IntersectionObserver(entries=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){ e.target.style.width=e.target.dataset.w+'%'; obs.unobserve(e.target); }
+    });
+  },{threshold:0.3});
+  bars.forEach(b=>obs.observe(b));
+})();
+
+// ── PIPELINE NODE TOGGLE ─────────────────────────────────────────────
+function toggleNode(id){
+  const node = document.getElementById(id);
+  const isOpen = node.classList.contains('active');
+  document.querySelectorAll('.pf-node.active').forEach(n=>n.classList.remove('active'));
+  if(!isOpen) node.classList.add('active');
+}
+
+// ── PARALLEL AGENT INFO PANEL ────────────────────────────────────────
+const agentInfo = {
+  tech: {
+    icon:'⚙️', name:'Technical Agent', file:'technical_agent.py',
+    output:'TechnicalAssessment — TRL level (1–9), confidence, years to prototype, key blockers, required breakthroughs, evidence citations',
+    tools:'ArxivQueryRun, ChromaDBRetriever (domain knowledge for TRL benchmarks)',
+    why:'Independent from market and cost analysis — can run in parallel. Reads original idea text, not prior agent outputs, to avoid cascading hallucination from upstream errors.'
+  },
+  market: {
+    icon:'📈', name:'Market Agent', file:'market_agent.py',
+    output:'MarketAssessment — TAM, SAM, SOM (USD), growth rate %/yr, competitive moat, top competitors, time to market years',
+    tools:'DuckDuckGoSearchRun (market data), WikipediaQueryRun (market context), ArxivQueryRun',
+    why:'Market sizing is independent of technical feasibility — running in parallel avoids sequential wait. SOM estimate is 5-year to right-size for early-stage moonshot screening.'
+  },
+  risk: {
+    icon:'⚠️', name:'Risk Agent', file:'risk_agent.py',
+    output:'RiskAssessment — overall_risk_level, top_risk, technical_risks[], regulatory_risks[], financial_risks[], market_risks[] — each with likelihood, description, mitigation',
+    tools:'ArxivQueryRun, DuckDuckGoSearchRun, ChromaDBRetriever',
+    why:'Must always produce ≥3 distinct risks (enforced by schema). Agents are instructed to challenge assumptions, not affirm them — the judge penalizes uniformly positive outputs.'
+  },
+  cost: {
+    icon:'💰', name:'Cost Estimation Agent', file:'cost_estimation_agent.py',
+    output:'CostEstimation — capex_total_usd (range: low/high), opex_annual_usd, unit_cost_usd, break_even_years, production_scale, confidence_level',
+    tools:'ArxivQueryRun (cost benchmarks), ChromaDBRetriever (domain CAPEX/OPEX data), PythonREPLTool (arithmetic validation)',
+    why:'CAPEX/OPEX/break-even only — not a full DCF model. Right-sized for early-stage moonshot screening where NPV inputs don\'t exist yet. PythonREPL validates arithmetic rather than trusting LLM math.'
+  },
+  rag: {
+    icon:'📚', name:'RAG Knowledge Agent', file:'rag_agent.py',
+    output:'RAGContext — retrieved_chunks[], query_used, grounded (bool), total_retrieved, evidence_citations[], domain_chunks[], portfolio_chunks[]',
+    tools:'ChromaDBRetriever (queries both source_type="domain" and source_type="portfolio" simultaneously)',
+    why:'Provides grounding context for downstream agents and the Kill Shot designer. Sets grounded=False in state if no chunks above threshold — downstream agents explicitly notified.'
+  }
+};
+function toggleParallelInfo(key){
+  const panel = document.getElementById('agent-detail');
+  const inner = document.getElementById('agent-detail-inner');
+  const info = agentInfo[key];
+  if(panel.style.display==='block' && panel.dataset.current===key){ panel.style.display='none'; return; }
+  panel.dataset.current = key;
+  inner.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.75rem">
+      <span style="font-size:1.2rem">${info.icon}</span>
+      <strong style="color:var(--text);font-size:0.92rem">${info.name}</strong>
+      <code style="font-size:0.72rem;color:var(--text-3);margin-left:auto">${info.file}</code>
+    </div>
+    <div style="margin-bottom:0.5rem"><span style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-3)">Output Schema</span><br><span>${info.output}</span></div>
+    <div style="margin-bottom:0.5rem"><span style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-3)">Tools</span><br><span>${info.tools}</span></div>
+    <div style="background:var(--primary-dim);border:1px solid rgba(37,99,235,0.2);border-radius:8px;padding:0.6rem 0.8rem;margin-top:0.5rem">
+      <span style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--primary-light)">Design Note</span><br><span>${info.why}</span>
+    </div>`;
+  panel.style.display = 'block';
+}
+
+// ── DECISION CARD TOGGLE ─────────────────────────────────────────────
+function toggleDec(card){
+  const isOpen = card.classList.contains('open');
+  document.querySelectorAll('.dec-card.open').forEach(c=>c.classList.remove('open'));
+  if(!isOpen) card.classList.add('open');
+}
+
+// ── FAILURE MODE TABS ────────────────────────────────────────────────
+function switchTab(key){
+  document.querySelectorAll('.fail-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.fail-panel').forEach(p=>p.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('fp-'+key).classList.add('active');
+}
+
+// ── PIPELINE SIMULATION ──────────────────────────────────────────────
+let simRunning = false;
+const simSteps = [
+  { type:'node', id:'pn-input',   connId:'conn-1', statusId:'pn-input-status',   delay:600  },
+  { type:'node', id:'pn-intent',  connId:'conn-2', statusId:'pn-intent-status',  delay:800  },
+  { type:'node', id:'pn-gate',    connId:'conn-3', statusId:'pn-gate-status',    delay:1200 },
+  { type:'parallel', delay:1600 },
+  { type:'node', id:'pn-hitl',    connId:'conn-4', statusId:'pn-hitl-status',    delay:3000 },
+  { type:'node', id:'pn-kill',    connId:'conn-5', statusId:'pn-kill-status',    delay:2000 },
+];
+function resetPipeline(){
+  simRunning = false;
+  document.getElementById('sim-btn').textContent = '▶ Simulate Run';
+  ['pn-input','pn-intent','pn-gate','pn-hitl','pn-kill'].forEach(id=>{
+    const n=document.getElementById(id);
+    n.classList.remove('running','done','rejected');
+    const s=document.getElementById(id+'-status');
+    if(s){ s.textContent='Idle'; s.innerHTML='Idle'; }
+  });
+  ['ppn-tech','ppn-mkt','ppn-risk','ppn-cost','ppn-rag'].forEach(id=>{
+    const n=document.getElementById(id);
+    if(n) n.classList.remove('running','done');
+    const s=document.getElementById(id+'-s');
+    if(s) s.textContent='Idle';
+  });
+  ['conn-1','conn-2','conn-3','conn-4','conn-5','conn-6'].forEach(id=>{
+    const c=document.getElementById(id); if(c) c.classList.remove('active');
+  });
+  document.getElementById('agent-detail').style.display='none';
+}
+async function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+async function simulatePipeline(){
+  if(simRunning){ resetPipeline(); return; }
+  simRunning=true; resetPipeline(); simRunning=true;
+  document.getElementById('sim-btn').textContent = '↺ Stop';
+  const nodes = ['pn-input','pn-intent','pn-gate'];
+  const conns = ['conn-1','conn-2','conn-3'];
+  const statuses = ['pn-input-status','pn-intent-status','pn-gate-status'];
+  const labels = ['Received','Classifying…','Evaluating…'];
+  const dones = ['Submitted','Safe · idea','Gate: PASS'];
+  // Sequential nodes
+  for(let i=0;i<nodes.length;i++){
+    if(!simRunning) return;
+    const n=document.getElementById(nodes[i]);
+    n.classList.add('running');
+    document.getElementById(statuses[i]).innerHTML = `<span class="running-ring"></span> ${labels[i]}`;
+    await sleep([800,1000,1400][i]);
+    if(!simRunning) return;
+    n.classList.remove('running'); n.classList.add('done');
+    document.getElementById(statuses[i]).textContent = dones[i];
+    if(conns[i]){ const c=document.getElementById(conns[i]); if(c) c.classList.add('active'); }
+    await sleep(300);
+  }
+  // Parallel agents
+  if(!simRunning) return;
+  const pnodes=[['ppn-tech','ppn-tech-s'],['ppn-mkt','ppn-mkt-s'],['ppn-risk','ppn-risk-s'],['ppn-cost','ppn-cost-s'],['ppn-rag','ppn-rag-s']];
+  pnodes.forEach(([id,sid])=>{
+    const n=document.getElementById(id); if(n) n.classList.add('running');
+    const s=document.getElementById(sid); if(s) s.textContent='Running…';
+  });
+  // Stagger completion
+  const times=[1800,2200,1600,2000,1400];
+  const pPromises = pnodes.map(([id,sid],i)=>new Promise(async res=>{
+    await sleep(times[i]);
+    if(!simRunning) return res();
+    const n=document.getElementById(id); if(n){n.classList.remove('running');n.classList.add('done');}
+    const s=document.getElementById(sid); if(s) s.textContent='Done ✓';
+    res();
+  }));
+  await Promise.all(pPromises);
+  if(!simRunning) return;
+  // Connector after parallel
+  const c4=document.getElementById('conn-4'); if(c4) c4.classList.add('active');
+  await sleep(400);
+  // HITL
+  const hitl=document.getElementById('pn-hitl');
+  hitl.classList.add('running');
+  document.getElementById('pn-hitl-status').innerHTML='<span class="running-ring"></span> Awaiting expert…';
+  await sleep(2000);
+  if(!simRunning) return;
+  hitl.classList.remove('running'); hitl.classList.add('done');
+  document.getElementById('pn-hitl-status').textContent='Approved ✓';
+  const c5=document.getElementById('conn-5'); if(c5) c5.classList.add('active');
+  await sleep(400);
+  // Kill shot
+  const kill=document.getElementById('pn-kill');
+  kill.classList.add('running');
+  document.getElementById('pn-kill-status').innerHTML='<span class="running-ring"></span> Designing…';
+  await sleep(2000);
+  if(!simRunning) return;
+  kill.classList.remove('running'); kill.classList.add('done');
+  document.getElementById('pn-kill-status').textContent='Complete ✓';
+  const c6=document.getElementById('conn-6'); if(c6) c6.classList.add('active');
+  await sleep(300);
+  document.getElementById('sim-btn').textContent = '↺ Reset';
+  simRunning = false;
+}
+
+// ── ACTIVE NAV SECTION ───────────────────────────────────────────────
+(function(){
+  const sections = document.querySelectorAll('section[id]');
+  const links = document.querySelectorAll('.nav-links a');
+  const obs = new IntersectionObserver(entries=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){
+        links.forEach(l=>l.style.color='');
+        const active = document.querySelector(`.nav-links a[href="#${e.target.id}"]`);
+        if(active) active.style.color='var(--text)';
+      }
+    });
+  },{threshold:0.4});
+  sections.forEach(s=>obs.observe(s));
+})();
+</script>
+</body>
+</html>

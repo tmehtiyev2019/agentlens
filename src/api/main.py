@@ -162,6 +162,37 @@ def _stream_graph(thread_id: str, initial_state: dict, loop: asyncio.AbstractEve
                 errors = state_update.get("errors", []) if isinstance(state_update, dict) else []
                 has_error = bool(errors)
 
+                # Predict upcoming nodes and emit node_started so the frontend
+                # can show live "running" indicators before results arrive.
+                if node_name == "parallel_spawn":
+                    for p_node in ["technical", "market", "risk", "cost", "rag"]:
+                        _enqueue(
+                            loop,
+                            thread_id,
+                            PipelineEvent(type="node_started", node=p_node, thread_id=thread_id),
+                        )
+                elif node_name == "intent_classifier":
+                    conv_type = state_update.get("conversation_type") if isinstance(state_update, dict) else None
+                    next_node = "chat_responder" if conv_type == "chat" else "moonshot_evaluator"
+                    if state_update.get("intent_safe", True):
+                        _enqueue(
+                            loop,
+                            thread_id,
+                            PipelineEvent(type="node_started", node=next_node, thread_id=thread_id),
+                        )
+                elif node_name == "moonshot_evaluator":
+                    moonshot_eval = state_update.get("moonshot_evaluation") if isinstance(state_update, dict) else None
+                    passes = getattr(moonshot_eval, "passes_moonshot_gate", False) if moonshot_eval else False
+                    _enqueue(
+                        loop,
+                        thread_id,
+                        PipelineEvent(
+                            type="node_started",
+                            node="parallel_spawn" if passes else "rejection_report",
+                            thread_id=thread_id,
+                        ),
+                    )
+
                 if node_name == "human_review":
                     # Graph is about to pause — emit HITL pause event before it returns
                     _enqueue(
@@ -281,6 +312,18 @@ def _stream_graph_resume(thread_id: str, loop: asyncio.AbstractEventLoop) -> Non
     completed: list[str] = pipeline_states.get(thread_id, {}).get("_completed_nodes", [])
 
     try:
+        # Signal that kill_shot_agent (or rejection) is about to start
+        decision = pipeline_states.get(thread_id, {}).get("human_decision")
+        _enqueue(
+            loop,
+            thread_id,
+            PipelineEvent(
+                type="node_started",
+                node="rejection_report" if decision == "rejected" else "kill_shot_agent",
+                thread_id=thread_id,
+            ),
+        )
+
         for chunk in graph.stream(None, config=config):
             for node_name, state_update in chunk.items():
                 snapshot = pipeline_states.get(thread_id, {})

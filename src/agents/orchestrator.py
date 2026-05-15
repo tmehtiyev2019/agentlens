@@ -2,18 +2,35 @@
 LangGraph StateGraph orchestrator for the Techno-Economic Analysis pipeline.
 
 Execution order:
-  intent_classifier → moonshot_evaluator
-    → FAIL: rejection_report (terminal)
-    → PASS: [technical, market, risk, cost, rag] (parallel via Send)
-          → kill_shot → END
+  intent_classifier
+    → CHAT:  chat_response (terminal)
+    → FAIL:  rejection_report (terminal)
+    → PASS:  moonshot_evaluator
+               → FAIL: rejection_report (terminal)
+               → PASS: [technical, market, risk, cost, rag] (parallel via Send)
+                         → human_review (HITL pause)
+                           → REJECTED: rejection_report (terminal)
+                           → REVISE:   parallel_spawn (loop back with critique)
+                           → APPROVED: kill_shot_agent → END
+
+A human reviewer can revise the analysis up to MAX_REVISIONS times. The
+critique text is stored in state["human_critique"] and read by each specialist
+agent on the next round. Beyond MAX_REVISIONS, revise is treated as approve to
+prevent runaway loops.
 """
 
+MAX_REVISIONS = 2
+
 import operator
-from typing import Annotated, Any
+import os
+from typing import Annotated, Any, Literal
+
+import structlog
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
 from typing_extensions import TypedDict
 
 from langgraph.graph import StateGraph, END
-from langgraph.graph.message import add_messages
 
 from src.agents.moonshot_evaluator import run as moonshot_evaluator_run, MoonshotEvaluation
 from src.agents.technical_agent import run as technical_run, TechnicalAssessment
@@ -24,25 +41,39 @@ from src.agents.rag_agent import run as rag_run, RAGContext
 from src.agents.kill_shot_agent import run as kill_shot_run, KillShotExperiment
 from src.guardrails.intent_classifier import classify_intent
 
+logger = structlog.get_logger()
+
+_CHAT_SYSTEM = """\
+You are AgentLens — a techno-economic analysis system that evaluates moonshot product ideas
+using a LangGraph pipeline of specialist AI agents (technical feasibility, market opportunity,
+risk assessment, cost estimation, and knowledge retrieval).
+
+The user sent a conversational message rather than a moonshot idea to evaluate.
+Respond naturally in 3-5 sentences:
+1. Acknowledge their message warmly
+2. Explain in one sentence what AgentLens does
+3. Invite them to describe any product, technology, or research idea — even rough ones
+
+Be friendly and brief. Do NOT evaluate their message. End with an open invitation.
+Examples of ideas they could submit (mention 1-2): solid-state batteries, ocean plastic
+collection, autonomous surgical robots, nuclear fusion power plants, brain-computer interfaces.\
+"""
+
 
 # ---------------------------------------------------------------------------
 # Shared state
-#
-# TypedDict with Annotated reducers is the LangGraph pattern for shared state.
-# Each field is Optional because not every node writes to every field —
-# the moonshot gate may terminate early, or a parallel agent may fail.
-#
-# Reducer rules:
-#   - errors: operator.add  →  parallel agents each append without overwriting
-#   - all other fields: default (last-write-wins, one writer per field)
 # ---------------------------------------------------------------------------
 
 class GraphState(TypedDict):
     # Input
     idea: str
 
-    # Guardrail
+    # Guardrail + routing
     intent_safe: bool | None
+    conversation_type: Literal["idea", "chat"] | None
+
+    # Conversational response (populated when conversation_type == "chat")
+    chat_response: str | None
 
     # Moonshot gate
     moonshot_evaluation: MoonshotEvaluation | None
@@ -57,26 +88,53 @@ class GraphState(TypedDict):
     # Final sequential agent
     kill_shot: KillShotExperiment | None
 
-    # Accumulated errors from any node; operator.add merges lists from parallel writes
+    # Accumulated errors from any node
     errors: Annotated[list[str], operator.add]
 
-    # HITL fields — populated when graph pauses after parallel agents
-    human_decision: str | None          # "approved" | "rejected"
-    human_comment:  str | None          # injected into kill shot prompt if provided
+    # HITL fields
+    human_decision: str | None       # "approved" | "rejected" | "revise"
+    human_comment: str | None
+    human_critique: str | None       # latest revision request — read by specialist agents
+    revision_count: int              # number of revise-loops completed; capped at MAX_REVISIONS
 
     # Tracks whether RAG retrieval found grounding context
     grounded: bool
 
 
 # ---------------------------------------------------------------------------
-# Node functions — thin wrappers so each node name is explicit in traces
+# Node functions
 # ---------------------------------------------------------------------------
 
 def intent_classifier_node(state: GraphState) -> dict:
-    safe, reason = classify_intent(state["idea"])
+    safe, reason, input_type = classify_intent(state["idea"])
     if not safe:
-        return {"intent_safe": False, "errors": [f"Intent blocked: {reason}"]}
-    return {"intent_safe": True}
+        return {
+            "intent_safe": False,
+            "conversation_type": "idea",
+            "errors": [f"Intent blocked: {reason}"],
+        }
+    return {"intent_safe": True, "conversation_type": input_type}
+
+
+def chat_response_node(state: GraphState) -> dict:
+    """Generates a friendly conversational reply when the input is not a moonshot idea."""
+    log = logger.bind(agent="chat_response_node")
+    log.info("generating chat response")
+    try:
+        llm = ChatOpenAI(model=os.getenv("AGENT_MODEL", "gpt-4o-mini"), temperature=0.4)
+        response = llm.invoke(
+            [SystemMessage(content=_CHAT_SYSTEM), HumanMessage(content=state["idea"])]
+        )
+        return {"chat_response": str(response.content)}
+    except Exception as exc:
+        log.exception("chat_response_node failed", error=str(exc))
+        return {
+            "chat_response": (
+                "Hi! I'm AgentLens — I analyze moonshot product ideas using a panel of "
+                "specialist AI agents. Describe a technology or product concept and I'll "
+                "give you a full techno-economic assessment. What idea would you like to explore?"
+            )
+        }
 
 
 def moonshot_evaluator_node(state: GraphState) -> dict:
@@ -105,8 +163,6 @@ def rag_node(state: GraphState) -> dict:
 
 def human_review_node(state: GraphState) -> dict:
     # Intentionally empty: this node exists solely as the interrupt_after target.
-    # LangGraph pauses here after all 5 parallel agents complete; the API layer
-    # calls graph.update_state() with human_decision + human_comment, then resumes.
     return {}
 
 
@@ -115,22 +171,24 @@ def kill_shot_node(state: GraphState) -> dict:
 
 
 def parallel_spawn_node(state: GraphState) -> dict:
-    # Pass-through node; direct edges to all 5 parallel agents trigger them simultaneously.
+    # Pass-through; direct edges to all 5 parallel agents trigger them simultaneously.
     return {}
 
 
 def rejection_report_node(state: GraphState) -> dict:
-    """Terminal node when moonshot gate fails. State already has the explanation."""
+    """Terminal node when moonshot gate or HITL rejects. State already has the explanation."""
     return {}
 
 
 # ---------------------------------------------------------------------------
-# Routing functions (conditional edges)
+# Routing functions
 # ---------------------------------------------------------------------------
 
 def route_after_intent(state: GraphState) -> str:
     if not state.get("intent_safe"):
         return "rejection_report"
+    if state.get("conversation_type") == "chat":
+        return "chat_responder"
     return "moonshot_evaluator"
 
 
@@ -142,8 +200,19 @@ def route_after_moonshot(state: GraphState) -> str:
 
 
 def route_after_human_review(state: GraphState) -> str:
-    if state.get("human_decision") == "rejected":
+    decision = state.get("human_decision")
+    if decision == "rejected":
         return "rejection_report"
+    if decision == "revise":
+        # Cap revisions to avoid runaway loops — beyond cap, proceed to kill_shot.
+        if (state.get("revision_count") or 0) >= MAX_REVISIONS:
+            logger.warning(
+                "max_revisions_reached_forcing_proceed",
+                revision_count=state.get("revision_count"),
+                max_revisions=MAX_REVISIONS,
+            )
+            return "kill_shot_agent"
+        return "parallel_spawn"
     return "kill_shot_agent"
 
 
@@ -156,6 +225,7 @@ def build_graph(checkpointer=None) -> Any:
 
     # Nodes
     graph.add_node("intent_classifier", intent_classifier_node)
+    graph.add_node("chat_responder", chat_response_node)
     graph.add_node("moonshot_evaluator", moonshot_evaluator_node)
     graph.add_node("technical", technical_node)
     graph.add_node("market", market_node)
@@ -175,10 +245,14 @@ def build_graph(checkpointer=None) -> Any:
         "intent_classifier",
         route_after_intent,
         {
+            "chat_responder": "chat_responder",
             "moonshot_evaluator": "moonshot_evaluator",
             "rejection_report": "rejection_report",
         },
     )
+
+    # Chat path → terminal
+    graph.add_edge("chat_responder", END)
 
     # Moonshot gate → conditional route
     graph.add_conditional_edges(
@@ -194,17 +268,19 @@ def build_graph(checkpointer=None) -> Any:
     for node in ["technical", "market", "risk", "cost", "rag"]:
         graph.add_edge("parallel_spawn", node)
 
-    # All parallel agents converge on human_review (sync point before HITL pause)
+    # All parallel agents converge on human_review
     for node in ["technical", "market", "risk", "cost", "rag"]:
         graph.add_edge(node, "human_review")
 
-    # human_review → conditional: approved → kill_shot, rejected → rejection_report
+    # human_review → conditional: approved → kill_shot, rejected → rejection_report,
+    # revise → parallel_spawn (loop back so specialists re-run with the critique).
     graph.add_conditional_edges(
         "human_review",
         route_after_human_review,
         {
             "kill_shot_agent": "kill_shot_agent",
             "rejection_report": "rejection_report",
+            "parallel_spawn": "parallel_spawn",
         },
     )
 
@@ -212,7 +288,6 @@ def build_graph(checkpointer=None) -> Any:
     graph.add_edge("kill_shot_agent", END)
     graph.add_edge("rejection_report", END)
 
-    # interrupt_after pauses the graph at human_review for HITL input
     return graph.compile(interrupt_after=["human_review"], checkpointer=checkpointer)
 
 

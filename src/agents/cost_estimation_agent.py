@@ -20,6 +20,8 @@ from langchain_community.tools.arxiv.tool import ArxivQueryRun
 from langchain_experimental.tools import PythonREPLTool
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
+from src.agents._critique import revise_addendum
+
 logger = structlog.get_logger()
 
 
@@ -139,7 +141,7 @@ RULES:
 # ---------------------------------------------------------------------------
 
 def run(state: dict) -> dict:
-    idea: str = state["idea"]
+    idea: str = state["idea"] + revise_addendum(state)
     log = logger.bind(agent="cost_estimation_agent", idea_snippet=idea[:80])
 
     try:
