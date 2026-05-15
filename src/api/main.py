@@ -44,12 +44,15 @@ app.add_middleware(
 # LangGraph graph — compiled once at startup with SqliteSaver checkpointer
 # ---------------------------------------------------------------------------
 
+import sqlite3
 from langgraph.checkpoint.sqlite import SqliteSaver
 from src.agents.orchestrator import build_graph
 
-_checkpointer = SqliteSaver.from_conn_string(
-    os.getenv("CHECKPOINT_DB", "./checkpoints.db")
+_conn = sqlite3.connect(
+    os.getenv("CHECKPOINT_DB", "./checkpoints.db"),
+    check_same_thread=False,
 )
+_checkpointer = SqliteSaver(_conn)
 graph = build_graph(checkpointer=_checkpointer)
 
 # ---------------------------------------------------------------------------
@@ -446,9 +449,7 @@ async def resume(thread_id: str, body: ResumeRequest) -> ResumeResponse:
     pipeline_states[thread_id]["_status"] = "running"
 
     loop = asyncio.get_running_loop()
-    asyncio.create_task(
-        loop.run_in_executor(_executor, _stream_graph_resume, thread_id, loop)
-    )
+    loop.run_in_executor(_executor, _stream_graph_resume, thread_id, loop)
 
     log.info("pipeline_resumed", decision=body.decision)
     return ResumeResponse(thread_id=thread_id, status="resumed")
