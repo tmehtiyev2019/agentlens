@@ -13,6 +13,7 @@ from typing import Literal
 import structlog
 from langchain_openai import ChatOpenAI
 from langchain_community.tools import ArxivQueryRun, WikipediaQueryRun
+from langchain_community.utilities import WikipediaAPIWrapper
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel, Field
 
@@ -91,15 +92,14 @@ Cite specific Arxiv paper IDs or Wikipedia article titles as evidence.
 # Agent
 # ---------------------------------------------------------------------------
 
-_tools = [ArxivQueryRun(), WikipediaQueryRun()]
-_tool_map = {t.name: t for t in _tools}
-
-
 def run(state: dict) -> dict:
     idea: str = state["idea"]
 
     log = logger.bind(agent="technical_agent", idea_preview=idea[:80])
     log.info("starting technical assessment")
+
+    tools = [ArxivQueryRun(), WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())]
+    tool_map = {t.name: t for t in tools}
 
     try:
         model_name = os.getenv("AGENT_MODEL", "gpt-4o-mini")
@@ -107,7 +107,7 @@ def run(state: dict) -> dict:
         llm_with_tools = ChatOpenAI(
             model=model_name,
             temperature=0,
-        ).bind_tools(_tools)
+        ).bind_tools(tools)
 
         messages: list = [
             SystemMessage(content=SYSTEM_PROMPT),
@@ -125,10 +125,10 @@ def run(state: dict) -> dict:
 
             for tc in response.tool_calls:
                 tool_name = tc["name"]
-                if tool_name not in _tool_map:
+                if tool_name not in tool_map:
                     log.warning("unknown tool called", tool=tool_name)
                     continue
-                result = _tool_map[tool_name].invoke(tc["args"])
+                result = tool_map[tool_name].invoke(tc["args"])
                 # Truncate to 2 000 chars to stay within context budget
                 messages.append(
                     ToolMessage(

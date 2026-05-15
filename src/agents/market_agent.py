@@ -12,7 +12,9 @@ from typing import Literal
 
 import structlog
 from langchain_openai import ChatOpenAI
-from langchain_community.tools import DuckDuckGoSearchRun, WikipediaQueryRun
+from langchain_community.tools import WikipediaQueryRun
+from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain_community.utilities import WikipediaAPIWrapper
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel, Field
 
@@ -106,15 +108,14 @@ Cite your sources.
 # Agent
 # ---------------------------------------------------------------------------
 
-_tools = [DuckDuckGoSearchRun(), WikipediaQueryRun()]
-_tool_map = {t.name: t for t in _tools}
-
-
 def run(state: dict) -> dict:
     idea: str = state["idea"]
 
     log = logger.bind(agent="market_agent", idea_preview=idea[:80])
     log.info("starting market assessment")
+
+    tools = [TavilySearchResults(max_results=5), WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())]
+    tool_map = {t.name: t for t in tools}
 
     try:
         model_name = os.getenv("AGENT_MODEL", "gpt-4o-mini")
@@ -122,7 +123,7 @@ def run(state: dict) -> dict:
         llm_with_tools = ChatOpenAI(
             model=model_name,
             temperature=0,
-        ).bind_tools(_tools)
+        ).bind_tools(tools)
 
         messages: list = [
             SystemMessage(content=SYSTEM_PROMPT),
@@ -140,10 +141,10 @@ def run(state: dict) -> dict:
 
             for tc in response.tool_calls:
                 tool_name = tc["name"]
-                if tool_name not in _tool_map:
+                if tool_name not in tool_map:
                     log.warning("unknown tool called", tool=tool_name)
                     continue
-                result = _tool_map[tool_name].invoke(tc["args"])
+                result = tool_map[tool_name].invoke(tc["args"])
                 # Truncate to 2 000 chars to stay within context budget
                 messages.append(
                     ToolMessage(

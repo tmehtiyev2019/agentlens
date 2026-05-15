@@ -16,7 +16,9 @@ from typing import Literal
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
 from langchain_openai import ChatOpenAI
-from langchain_community.tools import DuckDuckGoSearchRun, WikipediaQueryRun
+from langchain_community.tools import WikipediaQueryRun
+from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain_community.utilities import WikipediaAPIWrapper
 from langchain_community.tools.arxiv.tool import ArxivQueryRun
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
@@ -156,7 +158,7 @@ def run(state: dict) -> dict:
 
 def _gather_evidence(idea: str, log) -> str:
     """Run the agentic tool-use loop to collect evidence for all three gate questions."""
-    tools = [DuckDuckGoSearchRun(), ArxivQueryRun(), WikipediaQueryRun()]
+    tools = [TavilySearchResults(max_results=5), ArxivQueryRun(), WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())]
     tool_map = {t.name: t for t in tools}
 
     llm = ChatOpenAI(

@@ -1,5 +1,6 @@
 # Orchestration
-langgraph>=0.2.0,<0.3.0
+langgraph>=0.3.0,<0.4.0
+langgraph-checkpoint-sqlite>=2.0.0,<3.0.0
 langchain>=0.3.0,<0.4.0
 langchain-anthropic>=0.3.0,<0.4.0
 langchain-community>=0.3.0,<0.4.0
@@ -21,7 +22,8 @@ sentence-transformers>=3.0.0,<4.0.0
 # Tool dependencies
 arxiv>=2.1.0,<3.0.0               # ArxivQueryRun
 wikipedia>=1.4.0,<2.0.0           # WikipediaQueryRun
-duckduckgo-search>=6.0.0,<7.0.0   # DuckDuckGoSearchRun
+duckduckgo-search>=6.0.0,<7.0.0   # kept as fallback
+tavily-python>=0.7.0,<1.0.0        # TavilySearchResults (replaces DuckDuckGo in agents)
 
 # RAG evaluation
 ragas>=0.2.0,<0.3.0

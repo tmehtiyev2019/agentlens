@@ -114,6 +114,11 @@ def kill_shot_node(state: GraphState) -> dict:
     return kill_shot_run(state)
 
 
+def parallel_spawn_node(state: GraphState) -> dict:
+    # Pass-through node; direct edges to all 5 parallel agents trigger them simultaneously.
+    return {}
+
+
 def rejection_report_node(state: GraphState) -> dict:
     """Terminal node when moonshot gate fails. State already has the explanation."""
     return {}
@@ -132,14 +137,14 @@ def route_after_intent(state: GraphState) -> str:
 def route_after_moonshot(state: GraphState) -> str:
     evaluation: MoonshotEvaluation | None = state.get("moonshot_evaluation")
     if evaluation and evaluation.passes_moonshot_gate:
-        return "parallel_agents"
+        return "parallel_spawn"
     return "rejection_report"
 
 
 def route_after_human_review(state: GraphState) -> str:
     if state.get("human_decision") == "rejected":
         return "rejection_report"
-    return "kill_shot"
+    return "kill_shot_agent"
 
 
 # ---------------------------------------------------------------------------
@@ -157,8 +162,9 @@ def build_graph() -> Any:
     graph.add_node("risk", risk_node)
     graph.add_node("cost", cost_node)
     graph.add_node("rag", rag_node)
+    graph.add_node("parallel_spawn", parallel_spawn_node)
     graph.add_node("human_review", human_review_node)
-    graph.add_node("kill_shot", kill_shot_node)
+    graph.add_node("kill_shot_agent", kill_shot_node)
     graph.add_node("rejection_report", rejection_report_node)
 
     # Entry point
@@ -179,10 +185,14 @@ def build_graph() -> Any:
         "moonshot_evaluator",
         route_after_moonshot,
         {
-            "parallel_agents": ["technical", "market", "risk", "cost", "rag"],
+            "parallel_spawn": "parallel_spawn",
             "rejection_report": "rejection_report",
         },
     )
+
+    # parallel_spawn fans out to all 5 agents simultaneously
+    for node in ["technical", "market", "risk", "cost", "rag"]:
+        graph.add_edge("parallel_spawn", node)
 
     # All parallel agents converge on human_review (sync point before HITL pause)
     for node in ["technical", "market", "risk", "cost", "rag"]:
@@ -193,13 +203,13 @@ def build_graph() -> Any:
         "human_review",
         route_after_human_review,
         {
-            "kill_shot": "kill_shot",
+            "kill_shot_agent": "kill_shot_agent",
             "rejection_report": "rejection_report",
         },
     )
 
     # Terminal edges
-    graph.add_edge("kill_shot", END)
+    graph.add_edge("kill_shot_agent", END)
     graph.add_edge("rejection_report", END)
 
     # interrupt_after pauses the graph at human_review for HITL input
