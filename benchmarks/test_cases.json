@@ -1,0 +1,37 @@
+[
+  {
+    "id": "solid-state-battery",
+    "idea": "We are building a lithium-metal solid-state battery using a sulfide-based ceramic electrolyte that eliminates liquid electrolyte entirely. The cell targets 500 Wh/kg gravimetric energy density — more than double the best commercial lithium-ion cells — with a 15-minute fast-charge capability and no dendrite-driven failure mode. Our manufacturing approach adapts existing dry-room electrode coating lines, making the capital transition from lithium-ion production tractable at gigawatt-hour scale.",
+    "domain": "energy_storage",
+    "expected_gate": true,
+    "notes": "Strong moonshot: problem (range anxiety, grid storage cost) is massive, solution is a genuine 2x+ step-change in energy density, sulfide solid electrolytes are at TRL 4-5 with Toyota and QuantumScape publishing validated lab cells. Tests whether technical and cost agents correctly price the ceramic electrolyte CAPEX premium and flag dendrite suppression as the residual blocker."
+  },
+  {
+    "id": "direct-air-capture-modular",
+    "idea": "We are deploying a modular, truck-mounted direct-air-capture unit that uses a novel humidity-swing sorbent material to passively adsorb CO2 from ambient air and release it with low-grade waste heat (80°C), cutting the energy cost of DAC from the current 2,000 kWh per tonne to under 400 kWh per tonne. Each unit captures 1,000 tonnes of CO2 per year and can be co-located with industrial waste-heat sources such as data centers, cement kilns, or geothermal plants to eliminate the regeneration energy cost entirely. At scale, we target a capture cost below $100 per tonne by 2030.",
+    "domain": "carbon_capture",
+    "expected_gate": true,
+    "notes": "Strong moonshot: climate change is a civilization-scale problem, humidity-swing sorbents are a genuine step-change over temperature-vacuum-swing incumbents (Climeworks, Carbon Engineering), and academic papers from ETH Zurich and MIT confirm TRL 3-4 for humidity-swing materials. Tests whether RAG agent retrieves relevant DAC papers and whether cost agent models waste-heat co-location correctly."
+  },
+  {
+    "id": "therapeutic-protein-de-novo",
+    "idea": "We are using a diffusion-based protein structure generation model (trained on the PDB and fine-tuned on therapeutic binders) to design de novo protein drugs that bind intracellular targets currently considered 'undruggable' by small molecules — specifically mutant KRAS oncoproteins. The designed proteins are delivered intracellularly via a lipid nanoparticle formulation optimized for tumor microenvironment pH. Our first candidate has shown sub-nanomolar binding affinity to KRAS G12D in AlphaFold-verified structural models, with wet-lab validation in HEK293 cells showing 60% knockdown of downstream ERK phosphorylation.",
+    "domain": "protein_engineering",
+    "expected_gate": true,
+    "notes": "Strong moonshot: KRAS-driven cancers kill ~200,000 Americans annually and have resisted drug development for 40 years, de novo protein design is a radical departure from small-molecule approaches, and RFDiffusion/ProteinMPNN are at TRL 4-5 with published experimental validations. Tests whether technical agent correctly assesses the LNP delivery risk as the key blocker and whether the kill-shot agent proposes a realistic in vivo mouse xenograft experiment."
+  },
+  {
+    "id": "compact-fusion-reactor",
+    "idea": "We are developing a high-temperature superconducting (HTS) tokamak using REBCO tape magnets that achieve 20-tesla fields at a major radius of 1.8 meters — enabling net energy gain (Q > 1) in a machine 10x smaller and 100x cheaper than ITER. The compact geometry allows fast iteration cycles of 18 months per major design revision, compressing the development timeline from decades to under 10 years. Our first pilot plant is designed to deliver 400 MW of electrical output to the grid by 2033.",
+    "domain": "fusion_energy",
+    "expected_gate": true,
+    "notes": "Strong moonshot: clean baseload energy is civilization-scale, HTS tokamak is a radical architecture departure from low-temperature superconductor ITER, and Commonwealth Fusion Systems published 20-tesla HTS magnet results in Nature in 2021 placing the core enabling technology at TRL 5. Tests whether the judge correctly flags the 2033 commercial grid delivery date as an overconfident claim and penalizes the overconfidence criterion accordingly."
+  },
+  {
+    "id": "crm-email-autocomplete",
+    "idea": "We are building a B2B SaaS product that uses a fine-tuned GPT-4 model to autocomplete sales emails inside Salesforce CRM. The model is trained on a company's historical won-deal email threads to personalize suggestions to each rep's writing style. Our pilot with 12 enterprise customers showed a 14% improvement in email open rates and a 9% reduction in time-to-first-response. We are targeting mid-market companies with 50-500 person sales teams at $200 per user per month.",
+    "domain": "enterprise_software",
+    "expected_gate": false,
+    "notes": "Intentional moonshot GATE FAIL: this is a well-executed incremental SaaS product, not a moonshot. The problem (sales email efficiency) affects a narrow segment, the solution is a 10-15% improvement (not 10x), and the technology (GPT-4 fine-tuning on email data) is TRL 9 with multiple incumbents (Lavender, Outreach, Salesloft). Tests whether the moonshot evaluator correctly identifies incremental improvement and fails the gate, and whether the benchmark correctly records expected_gate=false vs actual result."
+  }
+]

@@ -1,0 +1,45 @@
+# Orchestration
+langgraph>=0.2.0,<0.3.0
+langchain>=0.3.0,<0.4.0
+langchain-anthropic>=0.3.0,<0.4.0
+langchain-community>=0.3.0,<0.4.0
+langchain-openai>=0.3.0,<0.4.0   # benchmarking against GPT-4 only
+
+# LLM providers
+anthropic>=0.40.0,<1.0.0
+openai>=1.50.0,<2.0.0             # optional — benchmark comparisons
+
+# Schemas
+pydantic>=2.0.0,<3.0.0
+
+# Vector store
+chromadb>=0.5.0,<0.6.0
+
+# Embeddings
+sentence-transformers>=3.0.0,<4.0.0
+
+# Tool dependencies
+arxiv>=2.1.0,<3.0.0               # ArxivQueryRun
+wikipedia>=1.4.0,<2.0.0           # WikipediaQueryRun
+duckduckgo-search>=6.0.0,<7.0.0   # DuckDuckGoSearchRun
+
+# RAG evaluation
+ragas>=0.2.0,<0.3.0
+
+# Observability
+langsmith>=0.1.0,<0.2.0
+structlog>=24.0.0,<25.0.0
+prometheus-client>=0.20.0,<1.0.0
+
+# Serving
+fastapi>=0.115.0,<1.0.0
+uvicorn[standard]>=0.30.0,<1.0.0
+
+# PDF parsing (used by ingestor.py)
+pypdf>=4.0.0,<5.0.0
+
+# Dataset utilities (used by ragas metrics.py)
+datasets>=2.0.0,<3.0.0
+
+# Utilities
+python-dotenv>=1.0.0,<2.0.0

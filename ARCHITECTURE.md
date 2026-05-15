@@ -2,46 +2,78 @@
 
 ## Purpose
 
-A production-style agentic AI system that evaluates early-stage research or product ideas through a panel of specialist agents. Each agent analyzes a different dimension of the idea, and a dedicated evaluation layer scores and benchmarks the outputs.
+A production-style agentic AI system that performs techno-economic analysis of moonshot product ideas. A moonshot evaluator gate screens the input first. If the idea passes, a panel of specialist agents analyzes it in parallel. A kill shot experiment designer agent then identifies the single most critical assumption and designs the cheapest experiment to validate or kill the idea. A dedicated evaluation layer scores and benchmarks the full output.
 
 ---
 
 ## High-Level Architecture
 
 ```
-Input: research or product idea (natural language)
+Input: moonshot product idea (natural language)
           │
           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                  Orchestrator (LangGraph StateGraph)            │
-│                                                                 │
-│   ┌──────────────────┐   ┌──────────────────┐                  │
-│   │  Technical       │   │  Market          │                  │
-│   │  Feasibility     │   │  Opportunity     │                  │
-│   │  Agent           │   │  Agent           │                  │
-│   └──────────────────┘   └──────────────────┘                  │
-│                                                                 │
-│   ┌──────────────────┐   ┌──────────────────┐                  │
-│   │  Risk            │   │  Techno-Economic  │                 │
-│   │  Assessment      │   │  Analysis (TEA)  │                  │
-│   │  Agent           │   │  Agent           │                  │
-│   └──────────────────┘   └──────────────────┘                  │
-│                                                                 │
-│   ┌──────────────────────────────────────────┐                 │
-│   │  RAG Knowledge Agent                     │                 │
-│   │  (ChromaDB vector store + embeddings)    │                 │
-│   └──────────────────────────────────────────┘                 │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  Intent Classifier (guardrail)                   │
+│  Blocks harmful inputs before any agent runs     │
+└──────────────────────────────────────────────────┘
           │
           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Evaluation Layer                           │
-│                                                                 │
-│   LLM-as-judge       Quantitative metrics      Benchmarks      │
-│   (ideation score,   (RAGAS: faithfulness,     (single-agent   │
-│    coherence,         relevancy, context        vs multi-agent, │
-│    feasibility)       precision, recall)        model A vs B)  │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  Moonshot Evaluator Gate                         │
+│                                                  │
+│  Q1: Is the problem real?          PASS / FAIL   │
+│  Q2: Is the solution feasible?     PASS / FAIL   │
+│  Q3: Is the technology available?  PASS / FAIL   │
+└──────────────────────────────────────────────────┘
+          │                          │
+        PASS                       FAIL
+          │                          │
+          ▼                          ▼
+┌─────────────────────┐   Short rejection report
+│  LangGraph          │   (pipeline stops here)
+│  StateGraph         │
+│  Orchestrator       │
+│                     │
+│  ┌───────────────┐  │
+│  │ Technical     │  │
+│  │ Agent         │  │
+│  └───────────────┘  │
+│  ┌───────────────┐  │  ← parallel fan-out
+│  │ Market        │  │    (Send API)
+│  │ Agent         │  │
+│  └───────────────┘  │
+│  ┌───────────────┐  │
+│  │ Risk          │  │
+│  │ Agent         │  │
+│  └───────────────┘  │
+│  ┌───────────────┐  │
+│  │ Cost          │  │
+│  │ Estimation    │  │
+│  │ Agent         │  │
+│  └───────────────┘  │
+│  ┌───────────────┐  │
+│  │ RAG Knowledge │  │
+│  │ Agent         │  │
+│  └───────────────┘  │
+│          │          │
+│          ▼          │
+│  ┌───────────────┐  │  ← sequential (reads all above)
+│  │ Kill Shot     │  │
+│  │ Experiment    │  │
+│  │ Designer      │  │
+│  └───────────────┘  │
+└─────────────────────┘
+          │
+          ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                      Evaluation Layer                            │
+│                                                                  │
+│   LLM-as-judge       Quantitative metrics      Benchmarks        │
+│   (moonshot score,   (RAGAS: faithfulness,     (single-agent     │
+│    coherence,         relevancy, context        vs multi-agent,  │
+│    feasibility,       precision, recall)        model A vs B)    │
+│    kill shot quality)                                            │
+└──────────────────────────────────────────────────────────────────┘
           │
           ▼
    Structured JSON report + benchmark scores
@@ -53,29 +85,44 @@ Input: research or product idea (natural language)
 
 ### 1. Orchestrator — `src/agents/orchestrator.py`
 
-**What it is:** A LangGraph `StateGraph` that defines execution order and data flow between agents.
+**What it is:** A LangGraph `StateGraph` that defines execution order and data flow between all agents.
 
 **Key concepts:**
-- **State** — a shared typed dictionary (`TypedDict`) passed between nodes. Each agent reads from it and writes its output back in.
-- **Nodes** — each specialist agent is a node in the graph.
-- **Edges** — define which node runs next. Can be conditional (e.g., skip TEA agent if the idea is clearly non-technical).
-- **Checkpointing** — LangGraph supports persisting state mid-graph, enabling human-in-the-loop interrupts.
+- **State** — a shared typed dictionary (`TypedDict`) passed between nodes. Each agent reads from it and writes its output back as a partial update.
+- **Nodes** — each agent is a node. The moonshot evaluator and kill shot designer are single nodes; the five specialist agents are fanned out in parallel via the `Send` API.
+- **Conditional edge** — after the moonshot evaluator node, a conditional edge routes to either the specialist agents (PASS) or a terminal `rejection_report` node (FAIL). This stops the pipeline without running any expensive LLM calls.
+- **Synchronization** — the kill shot agent node has an incoming edge from all five parallel nodes; LangGraph waits for all five to complete before firing it.
+- **Checkpointing** — state is persisted after each node completes. If one parallel agent crashes, its peers' outputs are preserved; the kill shot agent runs in degraded mode and flags the missing input.
 
-**Why LangGraph over plain LangChain chains?**
-LangChain chains are linear (A → B → C). LangGraph supports cycles, branching, and state persistence — necessary for real agentic systems where an agent may need to loop back, ask for clarification, or be interrupted by a human.
+**Why LangGraph StateGraph over a sequential pipeline?**
+The five specialist agents are independent — running them sequentially serializes work that can run in parallel, multiplying latency by 5×. A sequential chain also has no native conditional edges (the moonshot gate would require manual `if/else`), no checkpointing (a crash at step 4 restarts from zero), and no degraded-mode support. LangGraph's `StateGraph` solves all three problems with the same graph definition.
 
 ---
 
-### 2. Specialist Agents — `src/agents/`
+### 2. Moonshot Evaluator Gate — `src/agents/moonshot_evaluator.py`
 
-Each agent is a Python function with signature `def run(state: GraphState) -> dict`. It reads from the shared state, calls an LLM with a structured prompt using tool use, and returns a typed Pydantic model written back into the state as a partial update.
+Runs before any specialist agent. Answers three pass/fail questions with evidence and explanation. If all three pass, the orchestrator fires the parallel fan-out. If any fail, the pipeline terminates with a short rejection report explaining which criterion failed and why.
+
+| Question | What it checks | Key tools |
+|---|---|---|
+| Is the problem real? | Scale, urgency, documented evidence of the problem | `DuckDuckGoSearchRun`, `ArxivQueryRun` |
+| Is the solution feasible? | Is the proposed approach radical (10×), not incremental? | `ArxivQueryRun`, `WikipediaQueryRun` |
+| Is the technology available? | TRL of enabling technology; available now vs. near-term vs. speculative | `ArxivQueryRun`, `ChromaDBRetriever` |
+
+Output type: `MoonshotEvaluation` — three `bool` fields, one explanation string and one evidence list per question, plus `passes_moonshot_gate: bool` and `gate_failure_reason: str | None`.
+
+---
+
+### 3. Specialist Agents — `src/agents/`
+
+Each agent is a Python function with signature `def run(state: GraphState) -> dict`. It reads from the shared state, calls an LLM with a structured prompt using tool use, and returns a typed Pydantic model written back into the state as a partial update. All five run in parallel after the moonshot gate passes.
 
 | Agent | Input | Output |
 |---|---|---|
 | `technical_agent.py` | Idea text | TRL level, key blockers, required breakthroughs |
 | `market_agent.py` | Idea text | TAM/SAM/SOM, competitive landscape, time-to-market |
-| `risk_agent.py` | Idea text + prior agent outputs | Top risks by category (technical, regulatory, financial) |
-| `techno_econ_agent.py` | Idea text + risk output | Cost model, revenue model, break-even estimate |
+| `risk_agent.py` | Idea text | Top risks by category (technical, regulatory, financial) |
+| `cost_estimation_agent.py` | Idea text | CAPEX, OPEX, unit economics, break-even estimate |
 | `rag_agent.py` | Idea text | Retrieved relevant documents + grounding context |
 
 **Why Pydantic for outputs?**
@@ -83,7 +130,17 @@ Free-form LLM text is unreliable in pipelines. Pydantic v2 schemas combined with
 
 ---
 
-### 3. RAG Knowledge Agent — `src/knowledge_base/`
+### 4. Kill Shot Experiment Designer — `src/agents/kill_shot_agent.py`
+
+Runs sequentially after all five parallel agents complete. Reads the full state — technical assessment, market analysis, risks, cost estimates, and retrieved grounding context — and identifies the **single most critical assumption** that, if false, kills the idea. It then designs the simplest and cheapest experiment to test that assumption.
+
+Output type: `KillShotExperiment` — `critical_assumption`, `why_this_assumption`, `experiment_description`, `success_criteria`, `failure_criteria`, `estimated_cost_usd`, `estimated_duration_weeks`, `required_resources`.
+
+**Why this agent runs last:** It needs the full picture from all specialist agents to identify the weakest link across technical, market, risk, and cost dimensions. Running it in parallel would force it to speculate without that context.
+
+---
+
+### 5. RAG Knowledge Agent — `src/knowledge_base/`
 
 **Pipeline:**
 ```
@@ -105,9 +162,51 @@ Zero infrastructure — runs as a local Python library. In production this is re
 **Chunking strategy:**
 Chunk size (500 tokens) and overlap (50 tokens) are config parameters, not magic numbers. Too large = irrelevant context dilutes the prompt. Too small = important context is split across chunks. The right value is domain-dependent and should be tuned via the RAGAS context precision/recall metrics.
 
+### Knowledge Base Collections
+
+The vector store uses a **single ChromaDB collection** with `source_type` metadata for filtering. This avoids maintaining two similarity thresholds and two embedding indices while still allowing agents to target specific knowledge sources.
+
+| `source_type` | Content | Ingested when |
+|---|---|---|
+| `"domain"` | TRL benchmarks, market reports, published papers, cost databases | Setup time (`--ingest-domain`) |
+| `"portfolio"` | Past project documents from the user's portfolio | On demand (`--ingest-portfolio`) |
+
+**Portfolio document metadata extracted at ingestion:**
+
+```python
+{
+    "source_type":    "portfolio",
+    "project_name":   str,           # e.g. "Project Loon"
+    "project_domain": str,           # e.g. "connectivity", "energy", "biotech"
+    "outcome":        str,           # "succeeded" | "killed" | "pivoted"
+    "date_completed": str,           # ISO date
+    "doc_type":       str,           # "pdf" | "markdown" | "json"
+}
+```
+
+**How agents use portfolio knowledge:**
+
+- **Cost estimation agent**: queries `source_type=portfolio` for comparable past project costs — grounds CAPEX/OPEX estimates in real precedent rather than literature benchmarks alone
+- **Kill shot agent**: retrieves past kill decisions from portfolio (`outcome=killed`) — learns which critical assumptions have historically ended similar projects
+- **RAG agent**: queries across both `source_type` values simultaneously (no `where` filter) — maximises context coverage
+
+**Ingestion pipeline (portfolio):**
+
+```
+Portfolio docs (PDF, Markdown, JSON)
+    │  metadata extraction: project_name, domain, outcome, date
+    ▼
+chunking (same params as domain: 500 tokens, 50 overlap)
+    │
+    ▼
+ChromaDB (same collection, source_type="portfolio")
+```
+
+Supported input formats at ingestion: PDF (via `pypdf`), Markdown, JSON (flattened to text). Raw files are placed in `src/knowledge_base/portfolio/` and the ingestor walks the directory.
+
 ---
 
-### 4. Evaluation Layer — `src/evaluation/`
+### 6. Evaluation Layer — `src/evaluation/`
 
 #### 4a. LLM-as-Judge — `judge.py`
 
@@ -148,14 +247,183 @@ Each test case contains an input idea, a configuration (model, agent count, RAG 
 
 ---
 
-### 5. Serving Layer — `src/api/main.py`
+### 7. Serving Layer — `src/api/main.py`
 
 ```
-POST /evaluate       — submit an idea, receive the full structured report
-GET  /benchmark      — run the benchmark suite and return scores
+POST /evaluate                    — submit idea; returns { thread_id } immediately
+GET  /evaluate/{thread_id}/stream — SSE stream of PipelineEvent objects
+POST /evaluate/{thread_id}/resume — submit HITL decision { decision, comment? }
+GET  /evaluate/{thread_id}/report — fetch final report JSON once complete
+GET  /evaluate/{thread_id}/status — current node + status (reconnect support)
+GET  /benchmark                   — run benchmark suite and return scores
 ```
 
 FastAPI: async-native, Pydantic-native, auto-generates OpenAPI docs.
+
+---
+
+## Memory Architecture
+
+AgentLens implements all three memory types that appear in production cognitive architectures. Each maps to a distinct component with distinct failure modes.
+
+| Memory Type | Definition | Implementation | Failure mode |
+|---|---|---|---|
+| **Episodic** | Memory of specific past events — what happened in this run and prior runs | LangGraph checkpointer (SQLite locally, Redis/Postgres in prod). Each run has a `thread_id`; full `GraphState` is persisted after every node boundary | Checkpoint loss → run unrecoverable; must restart from idea input |
+| **Semantic** | Long-term factual knowledge about the world | ChromaDB vector store. Technology TRL benchmarks, CAPEX/OPEX data, market reports stored as embedded documents; retrieved by the RAG agent | Retrieval miss → agents hallucinate domain facts they should have grounded |
+| **Procedural** | How to do things — skills, evaluation rubrics, the moonshot framework | System prompts + tool schemas + few-shot examples baked into each agent. The 3-question gate is procedural memory made explicit in code | Prompt drift after a model update → agents silently stop following the rubric |
+
+### Episodic Memory — LangGraph Checkpointer
+
+The checkpointer stores the full `GraphState` at every node boundary. This enables:
+
+- **Run resume**: a crash at any node resumes from the last checkpoint — the graph never restarts from the raw idea input
+- **HITL continuity**: when the graph pauses for human review, the pause state is checkpointed; the human can respond hours later and the graph resumes exactly where it stopped
+- **Run history**: past evaluations are queryable by `thread_id`; prior runs on similar ideas can be surfaced for comparison
+
+Local: `SqliteSaver` (zero infra). Production: `RedisSaver` or `PostgresSaver` for distributed access across API workers.
+
+### Semantic Memory — ChromaDB
+
+Documents ingested at setup time include technology TRL benchmarks by domain, CAPEX/OPEX benchmarks for relevant technology categories, market sizing reports, and published kill shot experiment designs. The RAG agent retrieves using cosine similarity (top-k=5, threshold=0.75). All retrieved chunks carry a source document ID — cost estimation and kill shot agents cite these in their `evidence_citations` fields.
+
+### Procedural Memory — Prompts and Schemas
+
+The system's skills are encoded in system prompts (evaluation rubric, output constraints, domain heuristics), tool schemas (the Pydantic schema shown to the LLM defines what fields must be populated and what values are valid), and targeted few-shot examples. Procedural memory is the hardest type to monitor: a model update can cause silent rubric drift without throwing any error. The LLM-as-judge explicitly scores for rubric adherence, and LangSmith stores every prompt template version so drift can be detected by comparing judge scores across model versions.
+
+---
+
+## Human-in-the-Loop (HITL)
+
+### Design Decision
+
+A single HITL pause point sits **after all 5 parallel specialist agents complete, before the kill shot agent runs**. This is the highest-value intervention point: the kill shot experiment is the most actionable output, and errors in parallel agent outputs (wrong TRL estimate, incorrect cost assumption) propagate directly into the experiment design. A domain expert can correct these before they cascade.
+
+### What the Human Can Do at the Pause
+
+| Action | Effect |
+|---|---|
+| **Approve** | Pipeline resumes; kill shot runs with original agent outputs |
+| **Reject** | Pipeline terminates; rejection and reason recorded in state |
+| **Approve + comment** | Free-text comment is injected into the kill shot agent's prompt as additional grounding context (e.g., *"Technical agent underestimated TRL — we have a working lab prototype"*) |
+
+### LangGraph Implementation
+
+A `human_review` node is inserted between the parallel agents and `kill_shot`. The graph is compiled with `interrupt_after=["human_review"]`.
+
+```python
+# Phase 1: graph runs to human_review, checkpoints, returns control
+result = graph.invoke(
+    {"idea": idea_text},
+    config={"configurable": {"thread_id": thread_id}}
+)
+# → SSE delivers hitl_pause event to frontend
+
+# Phase 2: human submits decision via GUI
+graph.update_state(
+    config={"configurable": {"thread_id": thread_id}},
+    values={"human_decision": "approved", "human_comment": "TRL is actually 5..."}
+)
+
+# Phase 3: graph resumes from checkpoint, fires kill_shot
+result = graph.invoke(
+    None,
+    config={"configurable": {"thread_id": thread_id}}
+)
+```
+
+### State Fields Added for HITL
+
+```python
+human_decision: Literal["approved", "rejected"] | None
+human_comment:  str | None   # injected into kill shot prompt if provided
+```
+
+### HITL-Specific Failure Modes
+
+| Failure | Cause | Mitigation |
+|---|---|---|
+| Stale checkpoint | Human takes too long; checkpoint TTL expires | Set checkpoint TTL ≥ 24h for all HITL-enabled runs |
+| Lost comment | Resume API call fails after human submits | Frontend confirms HTTP 200 before clearing the form |
+| HITL bypass | Pipeline invoked with `interrupt_after=[]` | Startup validation asserts `"human_review" in graph.interrupt_after` in production config |
+
+---
+
+## GUI — Real-Time Pipeline Visualization
+
+### Purpose
+
+The GUI shows pipeline execution state in real time — each node lights up as it runs, agent outputs appear as they complete, and the HITL pause renders as an interactive review panel. No log tailing, no polling.
+
+### Layout
+
+```
+┌──────────────────────┬──────────────────────────────────────────┐
+│  PIPELINE GRAPH      │  OUTPUT PANEL                            │
+│                      │                                          │
+│  ● Intent Check  ✓   │  ┌─ Moonshot Gate ─────────────────────┐│
+│  ● Moonshot Gate ✓   │  │  Q1 Problem real?     ✓ PASS        ││
+│                      │  │  Q2 Solution feasible? ✓ PASS        ││
+│  ┌── Parallel ──────┐│  │  Q3 Tech available?   ✓ PASS        ││
+│  │ ● Technical  ✓  ││  │  TRL: 4  Confidence: medium         ││
+│  │ ⟳ Market    ... ││  └─────────────────────────────────────┘│
+│  │ ⟳ Risk      ... ││                                          │
+│  │ ⟳ Cost      ... ││  ┌─ Technical Assessment ──────────────┐│
+│  │ ⟳ RAG       ... ││  │  TRL 4 — Blocker: catalyst          ││
+│  └─────────────────┘│  │  durability at scale                 ││
+│                      │  └─────────────────────────────────────┘│
+│  ◌ [HITL REVIEW]    │                                          │
+│  ◌ Kill Shot        │  ┌─ REVIEW BEFORE KILL SHOT ───────────┐│
+│  ◌ Evaluation       │  │  [Technical] [Market] [Risk] [Cost] ││
+│                      │  │  [RAG]                              ││
+│                      │  │  Comment (optional): ______________ ││
+│                      │  │  [Reject]              [Approve →]  ││
+│                      │  └─────────────────────────────────────┘│
+└──────────────────────┴──────────────────────────────────────────┘
+```
+
+### Frontend Component Structure
+
+**Stack:** Next.js 14 (App Router) · React Flow · Tailwind CSS · native EventSource API
+
+```
+frontend/
+├── app/
+│   ├── page.tsx                        # IdeaInputForm; POST /evaluate → redirect
+│   └── evaluate/[threadId]/
+│       └── page.tsx                    # Live run view; mounts PipelineGraph + OutputPanel
+├── components/
+│   ├── IdeaInputForm.tsx               # Textarea + submit button
+│   ├── PipelineGraph.tsx               # React Flow graph; nodes colored by run status
+│   ├── NodeStatusBadge.tsx             # pending / running / complete / failed chip
+│   ├── OutputPanel.tsx                 # Right panel; renders the active agent output card
+│   ├── MoonshotGateCard.tsx            # 3-question pass/fail verdict display
+│   ├── AgentOutputCard.tsx             # Generic card: fields, confidence badge, citations
+│   ├── HITLPauseModal.tsx              # Tabbed view of all 5 outputs + approve/reject form
+│   └── KillShotCard.tsx                # Assumption, experiment, cost, duration, resources
+├── hooks/
+│   ├── usePipelineStream.ts            # EventSource consumer → useReducer for node states
+│   └── useHITLResume.ts               # POST /evaluate/{id}/resume with decision + comment
+└── lib/
+    └── api.ts                          # Typed fetch wrappers for all backend endpoints
+```
+
+### SSE Event Schema
+
+```typescript
+type PipelineEvent =
+  | { type: "node_started";      node: string }
+  | { type: "node_completed";    node: string; output: AgentOutput }
+  | { type: "node_failed";       node: string; error: string }
+  | { type: "hitl_pause";        outputs: SpecialistOutputs }
+  | { type: "pipeline_complete"; report: FinalReport }
+  | { type: "pipeline_rejected"; reason: string }
+```
+
+`usePipelineStream` subscribes to `GET /evaluate/{threadId}/stream` and dispatches events into a `useReducer` that tracks per-node status and output. `PipelineGraph` reads this reducer state and updates React Flow node colors: gray → blue (running) → green (complete) / red (failed).
+
+### Why SSE over WebSocket
+
+SSE is unidirectional server→client, which matches the streaming pattern exactly — agent outputs flow one way. SSE runs over standard HTTP (no upgrade handshake, no separate port, works through any proxy). WebSocket would add bidirectionality we don't need on the stream channel; the one bidirectional interaction (HITL resume) is a plain HTTP POST, not a persistent socket. On reconnect, `EventSource` automatically retries with `Last-Event-ID`, and the `/status` endpoint provides current node state for a full reconnect recovery.
 
 ---
 
@@ -500,38 +768,42 @@ Agents must not repeat internal prompt instructions, model names, or system conf
 ## Project File Structure
 
 ```
-pr-1/
-├── .env                          # API keys (never committed)
+agentlens/
+├── .env                              # API keys (never committed)
 ├── .gitignore
-├── ARCHITECTURE.md               # This document
+├── ARCHITECTURE.md                   # This document
 ├── requirements.txt
 ├── src/
 │   ├── agents/
 │   │   ├── __init__.py
-│   │   ├── orchestrator.py       # LangGraph StateGraph + intent classifier
-│   │   ├── technical_agent.py
-│   │   ├── market_agent.py
-│   │   ├── risk_agent.py
-│   │   ├── techno_econ_agent.py
-│   │   └── rag_agent.py
+│   │   ├── orchestrator.py           # LangGraph StateGraph — wires all agents
+│   │   ├── moonshot_evaluator.py     # Gate: 3 pass/fail questions
+│   │   ├── technical_agent.py        # TRL, blockers, breakthroughs
+│   │   ├── market_agent.py           # TAM/SAM/SOM, competitors
+│   │   ├── risk_agent.py             # Technical, regulatory, financial risks
+│   │   ├── cost_estimation_agent.py  # CAPEX, OPEX, unit economics, break-even
+│   │   ├── rag_agent.py              # ChromaDB retrieval + grounding
+│   │   └── kill_shot_agent.py        # Critical assumption + cheapest experiment
 │   ├── evaluation/
 │   │   ├── __init__.py
-│   │   ├── judge.py              # LLM-as-judge (per-criterion scoring)
-│   │   ├── metrics.py            # RAGAS metrics wrapper
-│   │   └── benchmark.py          # Benchmark runner (config sweep)
+│   │   ├── judge.py                  # LLM-as-judge (per-criterion scoring)
+│   │   ├── metrics.py                # RAGAS metrics wrapper
+│   │   └── benchmark.py              # Benchmark runner (config sweep)
 │   ├── knowledge_base/
 │   │   ├── __init__.py
-│   │   ├── vector_store.py       # ChromaDB interface (abstracted)
-│   │   └── documents/            # Seed documents ingested into ChromaDB
+│   │   ├── vector_store.py           # ChromaDB interface (abstracted)
+│   │   ├── ingestor.py               # Ingestion pipeline for both source types  [TODO]
+│   │   ├── documents/                # Domain knowledge: TRL benchmarks, market reports, papers
+│   │   └── portfolio/                # Past project docs: PDFs, MD, JSON  [TODO: populate]
 │   ├── guardrails/
 │   │   ├── __init__.py
-│   │   ├── intent_classifier.py  # Pre-generation harmful input detection
-│   │   └── post_checks.py        # Post-generation rule-based checks
+│   │   ├── intent_classifier.py      # Pre-generation harmful input detection
+│   │   └── post_checks.py            # Post-generation rule-based checks
 │   └── api/
 │       ├── __init__.py
-│       └── main.py               # FastAPI app
+│       └── main.py                   # FastAPI app
 └── benchmarks/
-    └── test_cases.json           # Programmatic eval test cases
+    └── test_cases.json               # Programmatic eval test cases
 ```
 
 ---
@@ -540,8 +812,11 @@ pr-1/
 
 | Decision | Choice | Alternative | Why |
 |---|---|---|---|
-| Agent orchestration | LangGraph | Custom async Python | State persistence, branching, human-in-the-loop, checkpointing |
-| Agent topology | Parallel fan-out → aggregation | Sequential chain | Parallel reduces latency; sequential is simpler but slower |
+| Agent orchestration | LangGraph StateGraph | Sequential pipeline / custom async Python | Parallel fan-out, conditional gate edge, state checkpointing, degraded-mode operation — none of these are possible in a sequential chain |
+| Pipeline entry | Moonshot gate (pass/fail) | Always run full pipeline | Blocks 5 parallel LLM calls + kill shot call on ideas that fail basic criteria; fails fast with explanation |
+| Final agent | Kill shot experiment designer | Summary/synthesis agent | Forces the system to produce an actionable output (cheapest next experiment), not just a report |
+| Cost agent scope | CAPEX/OPEX/break-even only | Full financial model (NPV, IRR) | Right-sized for early-stage moonshot screening; a full DCF model requires inputs that don't exist at this stage |
+| Parallel topology | Send API fan-out (5 agents) | Sequential specialist chain | Independent agents should not wait on each other; parallel reduces latency from ~5× to ~1× the slowest agent |
 | Vector store | ChromaDB | Pinecone, Weaviate | Zero infra for prototyping; easy to swap via abstraction layer |
 | LLM outputs | Pydantic + tool use | String parsing | Eliminates a whole class of runtime errors |
 | Evaluation | LLM-as-judge + RAGAS | Human eval only | Scalable and automatable; human eval is ground truth but does not run in CI |
@@ -562,3 +837,34 @@ pr-1/
 8. **How do you handle non-determinism in testing?** — Temperature=0 for evals; benchmark repeatability measured by score std across 5 identical runs; alert if std > 0.5.
 9. **What are your guardrails and how are they enforced?** — 4-layer defense: prompt instructions, Pydantic required fields that force explicit uncertainty, pre-generation intent classifier, post-generation rule-based checks.
 10. **How do you detect silent quality degradation?** — Scheduled benchmark runs on a fixed test set; Grafana alert if average judge score drops >10% from 7-day baseline.
+
+---
+
+## TODO — Planned Work (Not Yet Implemented)
+
+Items that are architecturally accounted for above but not yet built.
+
+### High priority
+
+| # | Item | File(s) | Notes |
+|---|---|---|---|
+| 1 | **Portfolio knowledge base ingestion** | `src/knowledge_base/ingestor.py`, `src/knowledge_base/portfolio/` | Ingest past project documents (PDF, Markdown, JSON) into ChromaDB with `source_type="portfolio"` metadata. Extract: `project_name`, `project_domain`, `outcome`, `date_completed`. Command: `python -m src.knowledge_base.ingestor --ingest-portfolio --path ./portfolio_docs/` |
+| 2 | **`moonshot_evaluator.py`** | `src/agents/moonshot_evaluator.py` | Gate agent: 3 pass/fail questions with evidence. Tools: `DuckDuckGoSearchRun`, `ArxivQueryRun`, `ChromaDBRetriever` |
+| 3 | **`technical_agent.py`** | `src/agents/technical_agent.py` | TRL, blockers, required breakthroughs |
+| 4 | **`market_agent.py`** | `src/agents/market_agent.py` | TAM/SAM/SOM, competitive landscape |
+| 5 | **`risk_agent.py`** | `src/agents/risk_agent.py` | Technical, regulatory, financial risks |
+| 6 | **`cost_estimation_agent.py`** | `src/agents/cost_estimation_agent.py` | CAPEX, OPEX, unit economics, break-even |
+| 7 | **`rag_agent.py`** | `src/agents/rag_agent.py` | ChromaDB retrieval across domain + portfolio |
+| 8 | **`kill_shot_agent.py`** | `src/agents/kill_shot_agent.py` | Critical assumption + cheapest experiment |
+| 9 | **`guardrails/`** | `intent_classifier.py`, `post_checks.py` | Intent classification + post-generation checks |
+| 10 | **`evaluation/`** | `judge.py`, `metrics.py`, `benchmark.py` | LLM-as-judge, RAGAS wrapper, benchmark runner |
+| 11 | **FastAPI serving layer** | `src/api/main.py` | SSE streaming, HITL resume endpoint |
+| 12 | **Frontend GUI** | `frontend/` | Next.js + React Flow + SSE consumer + HITL modal |
+
+### Portfolio ingestion — step-by-step when ready
+
+1. Place past project documents into `src/knowledge_base/portfolio/` (any mix of PDF, Markdown, JSON)
+2. Add metadata sidecar per document: `<filename>.meta.json` with `project_name`, `project_domain`, `outcome`, `date_completed`
+3. Run `python -m src.knowledge_base.ingestor --ingest-portfolio`
+4. Verify ingestion: `python -m src.knowledge_base.ingestor --list-sources` shows portfolio doc count
+5. Run an evaluation — the RAG agent and cost estimation agent will automatically retrieve from portfolio in addition to domain knowledge
