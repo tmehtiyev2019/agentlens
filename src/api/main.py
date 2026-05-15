@@ -50,7 +50,7 @@ from src.agents.orchestrator import build_graph
 _checkpointer = SqliteSaver.from_conn_string(
     os.getenv("CHECKPOINT_DB", "./checkpoints.db")
 )
-graph = build_graph()
+graph = build_graph(checkpointer=_checkpointer)
 
 # ---------------------------------------------------------------------------
 # In-process state — keyed by thread_id

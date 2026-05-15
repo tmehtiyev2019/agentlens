@@ -151,7 +151,7 @@ def route_after_human_review(state: GraphState) -> str:
 # Graph assembly
 # ---------------------------------------------------------------------------
 
-def build_graph() -> Any:
+def build_graph(checkpointer=None) -> Any:
     graph = StateGraph(GraphState)
 
     # Nodes
@@ -213,8 +213,8 @@ def build_graph() -> Any:
     graph.add_edge("rejection_report", END)
 
     # interrupt_after pauses the graph at human_review for HITL input
-    return graph.compile(interrupt_after=["human_review"])
+    return graph.compile(interrupt_after=["human_review"], checkpointer=checkpointer)
 
 
-# Compiled graph — imported by the FastAPI app and benchmark runner
+# Compiled graph without checkpointer — used only by the benchmark runner
 tea_graph = build_graph()
