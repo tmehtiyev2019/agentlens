@@ -8,14 +8,12 @@ interface IdeaInputFormProps {
 }
 
 const MAX_CHARS = 2000;
-const MIN_CHARS = 50;
 
 export default function IdeaInputForm({ onSubmit, isLoading }: IdeaInputFormProps) {
   const [idea, setIdea] = useState("");
 
   const charCount = idea.length;
-  const isUnderMin = charCount < MIN_CHARS;
-  const isDisabled = isLoading || isUnderMin || charCount === 0;
+  const isDisabled = isLoading || charCount === 0;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,19 +41,13 @@ export default function IdeaInputForm({ onSubmit, isLoading }: IdeaInputFormProp
           }}
           rows={6}
           disabled={isLoading}
-          placeholder="Describe your moonshot idea in detail. What problem does it solve? What is the proposed solution? What technology does it rely on? The more context you provide, the more accurate the analysis will be. (min 50 characters)"
+          placeholder="Describe your moonshot idea... or just say hi."
           className="w-full resize-none rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 shadow-inner focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
         />
         <span className={`absolute bottom-3 right-3 text-xs ${charCountColor}`}>
           {charCount}/{MAX_CHARS}
         </span>
       </div>
-
-      {charCount > 0 && isUnderMin && (
-        <p className="text-xs text-yellow-400">
-          {MIN_CHARS - charCount} more character{MIN_CHARS - charCount !== 1 ? "s" : ""} needed
-        </p>
-      )}
 
       <button
         type="submit"

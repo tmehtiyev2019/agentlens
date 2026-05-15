@@ -74,7 +74,7 @@ _executor = ThreadPoolExecutor(max_workers=8)
 
 
 class EvaluateRequest(BaseModel):
-    idea: str = Field(..., max_length=2000)
+    idea: str = Field(..., min_length=1)
 
 
 class EvaluateResponse(BaseModel):
